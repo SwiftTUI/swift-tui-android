@@ -35,9 +35,37 @@ dependencies { implementation("sh.swifttui:android-host:0.0.19") }
 swiftTuiAndroidHost { productName = "MyAppHost" }  // your SwiftPM product
 ```
 
-Write a one-screen Swift entry (`@_cdecl("swift_tui_android_create_host")` over
-your root `View`), host it with `SwiftTUIHostView()`. See the consumer guide in
-the SwiftTUI docs.
+Then you write exactly two app-side pieces:
+
+**1. A one-screen Swift entry** (a SwiftPM product named to match `productName`)
+that wraps your root `View` and exposes the fixed create symbol:
+
+```swift
+import SwiftTUI
+import SwiftTUIAndroidHost   // tagged HTTPS dependency on SwiftTUI/swift-tui
+
+private struct MyApp: App {
+  var body: some Scene { WindowGroup { MyRootView() } }
+}
+
+@_cdecl("swift_tui_android_create_host")
+public func swift_tui_android_create_host() -> Int64 {
+  MainActor.assumeIsolated {
+    (try? AndroidHostHandleRegistry.register(AndroidHostSceneHost(app: MyApp()))) ?? 0
+  }
+}
+```
+
+**2. Mount the host** in Compose:
+
+```kotlin
+setContent { SwiftTUIHostView(state = rememberSwiftTUIHostState()) }
+```
+
+The plugin cross-builds your Swift product for `arm64-v8a`, renames it to the
+canonical `libswift_tui_app_host.so`, and merges it + the Swift runtime into your
+APK's `jniLibs`. (Requires Swift 6.3.x + the Swift Android SDK to build your host
+`.so`.)
 
 ## Building locally
 
