@@ -1,0 +1,15 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Host library JVM unit tests + plugin validation (NDK-free). The root wraps this
+# as @swift_tui_android//:native_gate in //:native_gates.
+sh_test(
+    name = "native_gate",
+    srcs = ["tools/bazel/native_gate.sh"],
+    tags = [
+        "exclusive",
+        "local",
+        "no-sandbox",
+    ],
+)
