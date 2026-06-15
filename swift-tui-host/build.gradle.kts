@@ -113,13 +113,6 @@ publishing {
       }
     }
   }
-  repositories {
-    // Static Maven repo layout served from GitHub Pages (the gh-pages branch).
-    // The B2b publish step pushes this directory's contents to that branch, so
-    // consumers resolve from https://swifttui.github.io/swift-tui-android.
-    maven {
-      name = "githubPages"
-      url = uri(rootProject.layout.buildDirectory.dir("github-pages-repo"))
-    }
-  }
+  // The githubPages repository is configured centrally in the root build for
+  // every maven-publish module (the AAR and the plugin marker).
 }

@@ -13,17 +13,25 @@ This repo publishes two artifacts:
 ## Using it (consumer)
 
 ```kotlin
-// settings.gradle.kts — add the AAR repo (until Maven Central graduation):
+// settings.gradle.kts — add the Pages repo for BOTH the plugin and the AAR
+// (until the Plugin Portal / Maven Central graduation):
+val swiftTuiRepo = "https://swifttui.github.io/swift-tui-android"
+pluginManagement {
+  repositories {
+    gradlePluginPortal(); google(); mavenCentral()
+    maven { url = uri(swiftTuiRepo) }
+  }
+}
 dependencyResolutionManagement {
   repositories {
     google(); mavenCentral()
-    maven { url = uri("https://swifttui.github.io/swift-tui-android") }
+    maven { url = uri(swiftTuiRepo) }
   }
 }
 
 // app/build.gradle.kts:
-plugins { id("sh.swifttui.android") version "0.1.0" }
-dependencies { implementation("sh.swifttui:android-host:0.1.0") }
+plugins { id("sh.swifttui.android") version "0.0.19" }
+dependencies { implementation("sh.swifttui:android-host:0.0.19") }
 swiftTuiAndroidHost { productName = "MyAppHost" }  // your SwiftPM product
 ```
 
