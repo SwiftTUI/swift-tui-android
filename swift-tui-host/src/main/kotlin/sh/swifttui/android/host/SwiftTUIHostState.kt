@@ -106,9 +106,25 @@ class SwiftTUIHostState internal constructor(
 
   suspend fun pollFrames() {
     while (currentCoroutineContext().isActive) {
+      tickOnce()
       pollFrameOnce()
       drainClipboardWrite()
       delay(33L)
+    }
+  }
+
+  /**
+   * Drives the Swift main-actor executor once per poll. The embedded SwiftTUI
+   * run loop has no OS run loop on Android to resume its `@MainActor`
+   * continuations, so without this pump autonomous `.task` loops and animation
+   * stay frozen even though input-driven frames still render. Runs on the
+   * Android main thread (the poll loop's dispatcher), matching the thread the
+   * host was created/started on.
+   */
+  private fun tickOnce() {
+    val currentHandle = handle
+    if (currentHandle != 0L) {
+      SwiftTUIJni.tick(currentHandle)
     }
   }
 

@@ -14,8 +14,11 @@ constexpr const char* kLogTag = "SwiftTUIJNI";
 constexpr const char* kHostLibrary = "libswift_tui_app_host.so";
 constexpr const char* kJniClassName = "sh/swifttui/android/host/SwiftTUIJni";
 
+using VoidFunction = void (*)();
 using CreateHost = int64_t (*)();
 using HandleFunction = void (*)(int64_t);
+using TickFunction = int32_t (*)(int64_t);
+using DiagFunction = int64_t (*)();
 using ResizeFunction = void (*)(int64_t, int32_t, int32_t, double, double);
 using SendInputFunction = void (*)(int64_t, const uint8_t*, int32_t);
 using CopyLatestFrameFunction = int32_t (*)(int64_t, uint8_t*, int32_t);
@@ -69,6 +72,16 @@ Function swiftSymbol(const char* name) {
 // C symbol names are independent of the Kotlin package and validated at load.
 
 jlong nativeCreateHost(JNIEnv*, jobject) {
+  // Install the host-driven Swift main-actor executor before any main-actor
+  // work runs (it is a fatal error to install it later). Without this, the
+  // embedded SwiftTUI run loop's @MainActor continuations — autonomous `.task`
+  // loops, animation deadline wakes — never resume on Android, because there is
+  // no OS run loop to drain the Swift main executor. Idempotent.
+  if (auto install =
+        swiftSymbol<VoidFunction>("swift_tui_android_install_executor")) {
+    install();
+  }
+
   auto createHost = swiftSymbol<CreateHost>("swift_tui_android_create_host");
   if (createHost == nullptr) {
     return 0;
@@ -81,6 +94,43 @@ void nativeStart(JNIEnv*, jobject, jlong handle) {
   if (start != nullptr) {
     start(static_cast<int64_t>(handle));
   }
+}
+
+jint nativeTick(JNIEnv*, jobject, jlong handle) {
+  auto tick = swiftSymbol<TickFunction>("swift_tui_android_tick");
+  if (tick == nullptr) {
+    return 0;
+  }
+  jint status = static_cast<jint>(tick(static_cast<int64_t>(handle)));
+
+  // Diagnostics: confirm the main executor installed and is being drained on
+  // the first few ticks (so device logs show the fix took effect), and surface
+  // any later failure. diag packs: bit0 installed, bits1..21 enqueued,
+  // bits22..42 drained, bits43..52 pending.
+  static int s_tickCount = 0;
+  if (s_tickCount < 3 || status < 0) {
+    int64_t diag = 0;
+    if (auto diagFn = swiftSymbol<DiagFunction>("swift_tui_android_diag")) {
+      diag = diagFn();
+    }
+    int installed = static_cast<int>(diag & 0x1);
+    long enqueued = static_cast<long>((diag >> 1) & 0x1FFFFF);
+    long drained = static_cast<long>((diag >> 22) & 0x1FFFFF);
+    long pending = static_cast<long>((diag >> 43) & 0x3FF);
+    __android_log_print(
+      status < 0 ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
+      kLogTag,
+      "main-executor tick #%d status=%d installed=%d enqueued=%ld drained=%ld pending=%ld",
+      s_tickCount,
+      status,
+      installed,
+      enqueued,
+      drained,
+      pending);
+  }
+  s_tickCount++;
+
+  return status;
 }
 
 void nativeStop(JNIEnv*, jobject, jlong handle) {
@@ -216,6 +266,7 @@ void nativeSendInput(
 const JNINativeMethod kMethods[] = {
   {"createHost", "()J", reinterpret_cast<void*>(nativeCreateHost)},
   {"start", "(J)V", reinterpret_cast<void*>(nativeStart)},
+  {"tick", "(J)I", reinterpret_cast<void*>(nativeTick)},
   {"stop", "(J)V", reinterpret_cast<void*>(nativeStop)},
   {"destroy", "(J)V", reinterpret_cast<void*>(nativeDestroy)},
   {"resize", "(JIIDD)V", reinterpret_cast<void*>(nativeResize)},

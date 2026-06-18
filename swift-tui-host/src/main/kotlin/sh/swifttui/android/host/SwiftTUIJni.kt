@@ -7,6 +7,7 @@ internal object SwiftTUIJni {
 
   external fun createHost(): Long
   external fun start(handle: Long)
+  external fun tick(handle: Long): Int
   external fun stop(handle: Long)
   external fun destroy(handle: Long)
   external fun resize(
