@@ -33,7 +33,9 @@ val swiftAndroidNdkDir = providers.environmentVariable("ANDROID_NDK_HOME")
   .orElse(providers.environmentVariable("ANDROID_NDK_ROOT"))
   .orElse(defaultAndroidNdkDir)
 val swiftRuntimeLibDir = swiftAndroidRoot.map {
-  file("$it/swift-resources/usr/lib/swift-aarch64/android")
+  // java.io.File (not Gradle's `file()`), so this provider does not capture the
+  // enclosing script object — required for configuration-cache compatibility.
+  File("$it/swift-resources/usr/lib/swift-aarch64/android")
 }
 val ndkHostTag = providers.provider {
   val osName = System.getProperty("os.name").lowercase()
@@ -45,14 +47,14 @@ val ndkHostTag = providers.provider {
   }
 }
 val ndkCxxSharedLib = swiftAndroidNdkDir.zip(ndkHostTag) { ndkDir, hostTag ->
-  file("$ndkDir/toolchains/llvm/prebuilt/$hostTag/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
+  File("$ndkDir/toolchains/llvm/prebuilt/$hostTag/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
 }
 
 // True only when both the Android NDK and the Swift Android SDK bundle are
 // present. When false the native Swift build is skipped so a JVM-only
 // `testDebugUnitTest` gate can configure and run without them.
 val swiftAndroidToolingAvailable = providers.provider {
-  file(swiftAndroidNdkDir.get()).exists() && file(swiftSdkBundleDir.get()).exists()
+  File(swiftAndroidNdkDir.get()).exists() && File(swiftSdkBundleDir.get()).exists()
 }
 
 fun swiftPackageMirrorUrl(checkout: File): String {
@@ -75,17 +77,30 @@ val prepareSwiftSdkSearchPath = tasks.register("prepareSwiftSdkSearchPath") {
   description = "Creates a generated Swift SDK search path containing only the configured Android SDK."
   group = "build"
 
-  inputs.dir(swiftSdkBundleDir.map { file(it) })
-  outputs.dir(generatedSwiftSdksDir)
+  // Capture script-level state into task-local vals so the doLast action below
+  // never references the enclosing script object. A precompiled-script-plugin
+  // top-level `val` is reached through the script instance, so a stored lambda
+  // that names one captures `this$0`, which the configuration cache cannot
+  // serialize. Locals are captured by value and stay clean.
+  val artifactName = swiftSdkArtifactName
+  val sdksDir = generatedSwiftSdksDir
+  val bundleDir = swiftSdkBundleDir.map { File(it) }
+
+  inputs.dir(bundleDir)
+  outputs.dir(sdksDir)
 
   doLast {
-    val searchDir = generatedSwiftSdksDir.get().asFile
-    val bundleLink = searchDir.resolve("$swiftSdkArtifactName.artifactbundle")
-    project.delete(bundleLink)
+    val searchDir = sdksDir.get().asFile
+    val bundleLink = searchDir.resolve("$artifactName.artifactbundle")
+    // `Files.deleteIfExists` (not `project.delete`) so this action does not touch
+    // `Task.project` at execution time — required for configuration-cache
+    // compatibility. It removes the symlink itself without following it into the
+    // real SDK bundle, matching the prior `project.delete` semantics.
+    Files.deleteIfExists(bundleLink.toPath())
     searchDir.mkdirs()
     Files.createSymbolicLink(
       bundleLink.toPath(),
-      file(swiftSdkBundleDir.get()).toPath()
+      bundleDir.get().toPath()
     )
   }
 }
@@ -130,16 +145,19 @@ val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
   val product = hostConfig.productName.get()
 
   // Skip (rather than fail) when the Android NDK or Swift Android SDK bundle is
-  // absent, so a JVM-only `testDebugUnitTest` gate can run without them.
+  // absent, so a JVM-only `testDebugUnitTest` gate can run without them. Resolve
+  // at configuration time and capture as a task-local so the onlyIf spec does not
+  // reference the script object (config-cache safe). NDK/SDK presence is stable
+  // across a build, so a config-time decision is equivalent to a lazy one.
+  val toolingAvailable = swiftAndroidToolingAvailable.get()
   onlyIf {
-    val available = swiftAndroidToolingAvailable.get()
-    if (!available) {
+    if (!toolingAvailable) {
       logger.lifecycle(
         "Skipping Swift Android build: NDK or Swift Android SDK bundle not found. " +
           "The APK will lack the Swift host library; unit tests are unaffected."
       )
     }
-    available
+    toolingAvailable
   }
   dependsOn(configureSwiftPackageMirrors, prepareSwiftSdkSearchPath)
 
@@ -181,7 +199,10 @@ val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
 val copySwiftAndroidLibraries = tasks.register<Sync>("copySwiftAndroidLibraries") {
   description = "Syncs the Swift host product (renamed to canonical) and Swift runtime into jniLibs."
   group = "build"
-  onlyIf { swiftAndroidToolingAvailable.get() }
+  // Config-time capture (see buildSwiftAndroid): keeps the onlyIf spec free of any
+  // script-object reference so it is configuration-cache serializable.
+  val toolingAvailable = swiftAndroidToolingAvailable.get()
+  onlyIf { toolingAvailable }
   dependsOn(buildSwiftAndroid)
 
   val packageDir = hostConfig.packageDirectory.get().asFile
