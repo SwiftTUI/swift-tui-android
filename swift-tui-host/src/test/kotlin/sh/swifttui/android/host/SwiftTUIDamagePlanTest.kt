@@ -31,6 +31,7 @@ class SwiftTUIDamagePlanTest {
     focusPresentation = SwiftTUIFocusPresentation.None,
     accessibilityNodes = emptyList(),
     accessibilityAnnouncements = emptyList(),
+    scrollRegions = emptyList(),
     dirtyRows = dirtyRows,
     textDamageRows = textDamageRows,
     requiresFullTextRepaint = requiresFullTextRepaint,

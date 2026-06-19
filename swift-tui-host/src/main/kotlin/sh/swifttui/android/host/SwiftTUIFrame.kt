@@ -65,6 +65,41 @@ data class SwiftTUIPixelSize(
   val height: Int
 )
 
+data class SwiftTUICellSize(
+  val width: Int,
+  val height: Int
+)
+
+/**
+ * A scrollable region's extent in terminal cells: the visible [rect], the
+ * current clamped scroll [offset], and the total [content] size. Mirrors the
+ * Swift `AndroidHostScrollRegionSnapshot` / web `scrollRegions` wire shape.
+ *
+ * Touch panning of inner content is handled by the SwiftTUI core (a drag that
+ * starts on scroll content is forwarded as `.dragged` and pans there), so the
+ * host does not need this to pan. It is forwarded so the host can later route a
+ * pan to an outer native scroll view when the inner region cannot scroll
+ * further in the gesture's direction (nested-scroll chaining).
+ */
+data class SwiftTUIScrollRegion(
+  val id: String,
+  val rect: SwiftTUIRect,
+  val offset: SwiftTUIPoint,
+  val content: SwiftTUICellSize
+) {
+  /** Remaining upward scroll headroom in cells (`offset.y`). */
+  val canScrollUp: Boolean get() = offset.y > 0
+
+  /** Remaining downward scroll headroom (`offset.y < content - viewport`). */
+  val canScrollDown: Boolean get() = offset.y < maxOf(0, content.height - rect.height)
+
+  /** Remaining leftward scroll headroom in cells (`offset.x`). */
+  val canScrollLeft: Boolean get() = offset.x > 0
+
+  /** Remaining rightward scroll headroom (`offset.x < content - viewport`). */
+  val canScrollRight: Boolean get() = offset.x < maxOf(0, content.width - rect.width)
+}
+
 data class SwiftTUIImageAttachment(
   val id: String,
   val bounds: SwiftTUIRect,
@@ -138,6 +173,7 @@ data class SwiftTUIFrame(
   val focusPresentation: SwiftTUIFocusPresentation,
   val accessibilityNodes: List<SwiftTUIAccessibilityNode>,
   val accessibilityAnnouncements: List<SwiftTUIAccessibilityAnnouncement>,
+  val scrollRegions: List<SwiftTUIScrollRegion>,
   val dirtyRows: List<Int>,
   val textDamageRows: List<SwiftTUITextDamageRow>,
   val requiresFullTextRepaint: Boolean,
@@ -160,6 +196,26 @@ data class SwiftTUIFrame(
         cell.y == y &&
         x >= cell.x &&
         x < cell.x + cell.spanWidth.coerceAtLeast(1)
+    }
+  }
+
+  /**
+   * The last (topmost) scroll region whose viewport contains a 1-based
+   * terminal [column]/[row], or `null` if none. Later regions in the list are
+   * nested deeper, mirroring the core's topmost-wins scroll hit-test. Pure, so
+   * it is unit-testable without Android.
+   */
+  fun scrollRegionAt(column: Int, row: Int): SwiftTUIScrollRegion? {
+    val x = column - 1
+    val y = row - 1
+    if (x < 0 || y < 0) {
+      return null
+    }
+    return scrollRegions.lastOrNull { region ->
+      x >= region.rect.x &&
+        x < region.rect.x + region.rect.width &&
+        y >= region.rect.y &&
+        y < region.rect.y + region.rect.height
     }
   }
 
@@ -194,6 +250,9 @@ data class SwiftTUIFrame(
         accessibilityAnnouncements = objectValue.optJSONArray("accessibilityAnnouncements")
           .objects()
           .map { it.toAccessibilityAnnouncement() },
+        scrollRegions = objectValue.optJSONArray("scrollRegions").objects().map {
+          it.toScrollRegion()
+        },
         dirtyRows = dirtyRows,
         textDamageRows = objectValue.optJSONArray("textDamageRows").objects().map {
           it.toTextDamageRow()
@@ -293,6 +352,14 @@ private fun JSONObject.toTextDamageRow(): SwiftTUITextDamageRow =
     }
   )
 
+private fun JSONObject.toScrollRegion(): SwiftTUIScrollRegion =
+  SwiftTUIScrollRegion(
+    id = optString("id"),
+    rect = optJSONObject("rect").toRectOrZero(),
+    offset = optJSONObject("offset")?.toPoint() ?: SwiftTUIPoint(x = 0, y = 0),
+    content = optJSONObject("content")?.toCellSize() ?: SwiftTUICellSize(width = 0, height = 0)
+  )
+
 private fun JSONObject?.toRectOrZero(): SwiftTUIRect =
   this?.let {
     SwiftTUIRect(
@@ -311,6 +378,12 @@ private fun JSONObject.toPoint(): SwiftTUIPoint =
 
 private fun JSONObject.toPixelSize(): SwiftTUIPixelSize =
   SwiftTUIPixelSize(
+    width = optInt("width"),
+    height = optInt("height")
+  )
+
+private fun JSONObject.toCellSize(): SwiftTUICellSize =
+  SwiftTUICellSize(
     width = optInt("width"),
     height = optInt("height")
   )

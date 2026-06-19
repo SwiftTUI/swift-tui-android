@@ -1,6 +1,7 @@
 package sh.swifttui.android.host
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,5 +66,53 @@ class SwiftTUIFrameTest {
     assertEquals("https://b", frame.cellAt(3, 1)?.hyperlink)
     assertNull(frame.cellAt(9, 1))
     assertNull(frame.cellAt(1, 2))
+  }
+
+  @Test
+  fun framesWithoutScrollRegionsParseToEmptyList() {
+    val frame = SwiftTUIFrame.parse(
+      """{ "sequence": 1, "gridWidth": 2, "gridHeight": 1, "rows": [".."], "cells": [] }"""
+    )
+    assertTrue(frame.scrollRegions.isEmpty())
+    assertNull(frame.scrollRegionAt(1, 1))
+  }
+
+  @Test
+  fun parsesScrollRegionsAndComputesHeadroom() {
+    val frame = SwiftTUIFrame.parse(
+      """
+        {
+          "sequence": 3, "gridWidth": 4, "gridHeight": 2, "rows": ["....", "...."],
+          "cells": [],
+          "scrollRegions": [
+            {
+              "id": "root/list",
+              "rect": {"x": 0, "y": 0, "width": 4, "height": 2},
+              "offset": {"x": 0, "y": 3},
+              "content": {"width": 4, "height": 10}
+            }
+          ]
+        }
+      """.trimIndent()
+    )
+
+    assertEquals(1, frame.scrollRegions.size)
+    val region = frame.scrollRegions[0]
+    assertEquals("root/list", region.id)
+    assertEquals(SwiftTUIRect(0, 0, 4, 2), region.rect)
+    assertEquals(SwiftTUIPoint(0, 3), region.offset)
+    assertEquals(SwiftTUICellSize(4, 10), region.content)
+
+    // Mid-scroll vertically (offset 3 of max 8): both directions have headroom.
+    assertTrue(region.canScrollUp)
+    assertTrue(region.canScrollDown)
+    // Content is exactly as wide as the viewport: no horizontal headroom.
+    assertFalse(region.canScrollLeft)
+    assertFalse(region.canScrollRight)
+
+    // 1-based (column 2, row 1) → cell (1, 0), inside the region.
+    assertEquals(region, frame.scrollRegionAt(2, 1))
+    // Column 5 (cell x=4) is past the region's right edge.
+    assertNull(frame.scrollRegionAt(5, 1))
   }
 }
