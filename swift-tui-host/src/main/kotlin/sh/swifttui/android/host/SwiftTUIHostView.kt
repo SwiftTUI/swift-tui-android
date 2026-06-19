@@ -150,6 +150,16 @@ fun SwiftTUIHostView(
                 lastRow = row
                 state.sendInput(SwiftTUIInput.mouseDrag(column, row))
               }
+              // Nested-scroll chaining (deferred until a consumer embeds the
+              // host in a native scrollable): forwarding above is unconditional,
+              // so the inner SwiftTUI scroll region always pans. To let an outer
+              // Compose scrollable take over at the inner edge, gate this consume
+              // on `currentFrame?.scrollRegionAt(downColumn, downRow)` +
+              // `canScroll{Up,Down,Left,Right}` for the drag direction (release —
+              // skip consume — when the inner region has no headroom that way),
+              // ideally via a NestedScrollConnection. Kept unconditional here so
+              // the full-screen case (no parent scrollable) is unaffected. See
+              // docs/plans/2026-06-19-001-cross-host-scrolling-plan.md.
               change.consume()
             } else {
               state.sendInput(SwiftTUIInput.mouseUp(lastColumn, lastRow))
