@@ -30,8 +30,8 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts:
-plugins { id("sh.swifttui.android") version "0.0.26" }
-dependencies { implementation("sh.swifttui:android-host:0.0.26") }
+plugins { id("sh.swifttui.android") version "0.0.27" }
+dependencies { implementation("sh.swifttui:android-host:0.0.27") }
 swiftTuiAndroidHost { productName = "MyAppHost" }  // your SwiftPM product
 ```
 
