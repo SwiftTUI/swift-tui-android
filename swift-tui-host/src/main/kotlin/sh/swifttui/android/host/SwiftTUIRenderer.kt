@@ -17,7 +17,11 @@ import androidx.compose.ui.graphics.nativeCanvas
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-object SwiftTUIRenderer {
+// Per-host rendering surface. Holds the mutable bitmap cache and retained grid
+// state, so it must be instantiated once per host view (via `remember`) rather
+// than shared as a singleton — two hosts sharing one instance would corrupt
+// each other's frames. Pure colour helpers live as file-level functions below.
+class SwiftTUIRenderer {
   private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     typeface = Typeface.MONOSPACE
   }

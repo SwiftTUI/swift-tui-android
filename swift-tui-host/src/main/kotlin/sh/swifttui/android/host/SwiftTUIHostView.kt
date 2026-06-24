@@ -71,6 +71,7 @@ fun SwiftTUIHostView(
   modifier: Modifier = Modifier,
   style: SwiftTUIAndroidStyle = SwiftTUIAndroidStyle.default()
 ) {
+  val renderer = remember { SwiftTUIRenderer() }
   val focusRequester = remember { FocusRequester() }
   val imeFocusRequester = remember { FocusRequester() }
   var measuredSize by remember { mutableStateOf(IntSize.Zero) }
@@ -225,7 +226,7 @@ fun SwiftTUIHostView(
     content = {
       Box(modifier = Modifier.fillMaxSize()) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-          SwiftTUIRenderer.drawFrame(
+          renderer.drawFrame(
             drawScope = this,
             frame = frame,
             style = style,
