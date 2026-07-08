@@ -1,0 +1,48 @@
+name: Test
+
+# Remote verification of this repo's public contract: the host library and the
+# Gradle plugin build from a fresh clone with a JDK + Android SDK only. Runs
+# the same command as the org root's @swift_tui_android//:native_gate (host
+# JVM unit tests + plugin validation) — NDK-free and no Swift toolchain; the
+# Swift cross-build + emulator smoke remain a manual lane (blocked on the
+# bundled-NDK-sysroot include-path issue, see swift-tui-org proposal
+# 2026-06-26-001 #18).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-test-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm-gate:
+    name: Host JVM tests + plugin validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Provides Gradle distribution + dependency caching keyed on the wrapper
+      # and lockfile state.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ANDROID_HOME comes preconfigured on the runner image; the native gate
+      # honors it and hard-fails (never skips) when the SDK is missing.
+      - name: Run native gate
+        shell: bash
+        run: tools/bazel/native_gate.sh
