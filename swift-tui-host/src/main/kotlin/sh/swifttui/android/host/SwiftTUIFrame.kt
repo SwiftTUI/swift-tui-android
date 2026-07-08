@@ -220,8 +220,22 @@ data class SwiftTUIFrame(
   }
 
   companion object {
+    /**
+     * The newest frame schema this library understands. Every field parse is
+     * tolerant-defaulted so *older* frames render fine, but a frame declaring
+     * a NEWER schema version must fail loudly ([parse] throws and the host
+     * surfaces it via `lastError`) instead of tolerant-parsing to garbage —
+     * silent skew is the failure mode this guards against (F57).
+     */
+    const val SUPPORTED_SCHEMA_VERSION = 2
+
     fun parse(json: String): SwiftTUIFrame {
       val objectValue = JSONObject(json)
+      val declaredSchemaVersion = objectValue.optInt("schemaVersion", 1)
+      require(declaredSchemaVersion <= SUPPORTED_SCHEMA_VERSION) {
+        "SwiftTUI frame schemaVersion $declaredSchemaVersion is newer than the supported " +
+          "$SUPPORTED_SCHEMA_VERSION; update the swift-tui-android host library."
+      }
       val rows = objectValue.optJSONArray("rows").strings()
       val cells = objectValue.optJSONArray("cells").objects().map { it.toCell() }
       val dirtyRows = objectValue.optJSONArray("dirtyRows").ints()
