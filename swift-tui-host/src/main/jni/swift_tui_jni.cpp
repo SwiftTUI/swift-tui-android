@@ -21,6 +21,7 @@ using TickFunction = int32_t (*)(int64_t);
 using DiagFunction = int64_t (*)();
 using ResizeFunction = void (*)(int64_t, int32_t, int32_t, double, double);
 using SendInputFunction = void (*)(int64_t, const uint8_t*, int32_t);
+using DeclareCapabilitiesFunction = int32_t (*)(int64_t, const uint8_t*, int32_t);
 using CopyLatestFrameFunction = int32_t (*)(int64_t, uint8_t*, int32_t);
 using CopyClipboardTextFunction = int32_t (*)(int64_t, uint8_t*, int32_t);
 
@@ -263,6 +264,38 @@ void nativeSendInput(
   env->ReleaseByteArrayElements(input, bytes, JNI_ABORT);
 }
 
+jint nativeDeclareCapabilities(
+  JNIEnv* env,
+  jobject,
+  jlong handle,
+  jbyteArray json,
+  jint count
+) {
+  // Resolved lazily like every other host symbol: an older Swift host
+  // library without this entry point degrades to a no-op, keeping the
+  // absence-means-defaults wire contract.
+  auto declareCapabilities =
+    swiftSymbol<DeclareCapabilitiesFunction>("swift_tui_android_declare_capabilities");
+  if (declareCapabilities == nullptr || json == nullptr || count <= 0) {
+    return 0;
+  }
+
+  jsize arrayLength = env->GetArrayLength(json);
+  jint boundedCount = count < arrayLength ? count : arrayLength;
+  jbyte* bytes = env->GetByteArrayElements(json, nullptr);
+  if (bytes == nullptr) {
+    return 0;
+  }
+
+  jint accepted = declareCapabilities(
+    static_cast<int64_t>(handle),
+    reinterpret_cast<const uint8_t*>(bytes),
+    static_cast<int32_t>(boundedCount)
+  );
+  env->ReleaseByteArrayElements(json, bytes, JNI_ABORT);
+  return accepted;
+}
+
 const JNINativeMethod kMethods[] = {
   {"createHost", "()J", reinterpret_cast<void*>(nativeCreateHost)},
   {"start", "(J)V", reinterpret_cast<void*>(nativeStart)},
@@ -273,6 +306,7 @@ const JNINativeMethod kMethods[] = {
   {"copyLatestFrame", "(J[BI)I", reinterpret_cast<void*>(nativeCopyLatestFrame)},
   {"copyClipboardText", "(J[BI)I", reinterpret_cast<void*>(nativeCopyClipboardText)},
   {"sendInput", "(J[BI)V", reinterpret_cast<void*>(nativeSendInput)},
+  {"declareCapabilities", "(J[BI)I", reinterpret_cast<void*>(nativeDeclareCapabilities)},
 };
 
 }  // namespace

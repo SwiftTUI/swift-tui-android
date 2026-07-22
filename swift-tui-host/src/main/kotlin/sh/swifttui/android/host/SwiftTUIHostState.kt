@@ -41,6 +41,11 @@ class SwiftTUIHostState internal constructor(
         return
       }
     }
+    // Declare wire capabilities before the scene starts — the Swift host
+    // rejects declarations once running, and an older host library without
+    // the entry point ignores this (defaults = today's wire bytes).
+    val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
+    SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
     SwiftTUIJni.start(handle)
   }
 
