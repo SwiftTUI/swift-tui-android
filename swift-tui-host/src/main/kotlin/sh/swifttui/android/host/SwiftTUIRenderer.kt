@@ -168,7 +168,7 @@ class SwiftTUIRenderer {
       drawCells(canvas, damagedCells, terminalStyle, style, baselineOffset)
     }
 
-    lastRenderedSequence = frame.sequence
+    lastRenderedSequence = frame.consumedGeneration
   }
 
   private fun drawLegacyRows(

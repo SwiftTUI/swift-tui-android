@@ -11,5 +11,8 @@ package sh.swifttui.android.host
  */
 internal object SwiftTUIWireCapabilities {
   fun declarationJson(): String =
-    """{"maxAndroidSchemaVersion":${SwiftTUIFrame.SUPPORTED_SCHEMA_VERSION}}"""
+    """{"acceptsDeltaFrames":""" +
+      "${SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION >= 3}," +
+      """"maxAndroidSchemaVersion":${SwiftTUIFrame.SUPPORTED_SCHEMA_VERSION},""" +
+      """"maxWebSurfaceVersion":${SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION}}"""
 }

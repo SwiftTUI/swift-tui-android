@@ -161,6 +161,15 @@ data class SwiftTUITextDamageRow(
 data class SwiftTUIFrame(
   val schemaVersion: Int,
   val sequence: Long,
+  /**
+   * Consumption-order stamp for the renderer's retained-bitmap guard. On the
+   * legacy keyed-JSON wire this equals [sequence] (damage is commit-relative,
+   * so sequence contiguity is the partial-repaint precondition). On the
+   * converged web-surface wire the decoder session assigns a contiguous
+   * counter: the Swift host accumulates damage across poll-skipped frames,
+   * so consumption contiguity — not sequence contiguity — is the guard.
+   */
+  val consumedGeneration: Long,
   val gridWidth: Int,
   val gridHeight: Int,
   val preferredGridWidth: Int?,
@@ -245,6 +254,7 @@ data class SwiftTUIFrame(
       return SwiftTUIFrame(
         schemaVersion = objectValue.optInt("schemaVersion", 1),
         sequence = objectValue.optLong("sequence", 0L),
+        consumedGeneration = objectValue.optLong("sequence", 0L),
         gridWidth = objectValue.optInt("gridWidth", rows.maxOfOrNull { it.length } ?: 0),
         gridHeight = objectValue.optInt("gridHeight", rows.size),
         preferredGridWidth = objectValue.optionalInt("preferredGridWidth"),

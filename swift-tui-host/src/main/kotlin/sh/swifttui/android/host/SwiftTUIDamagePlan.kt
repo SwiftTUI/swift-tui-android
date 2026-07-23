@@ -36,7 +36,7 @@ object SwiftTUIDamagePlan {
     val requiresFull =
       sizeChanged ||
         previousSequence < 0L ||
-        frame.sequence != previousSequence + 1 ||
+        frame.consumedGeneration != previousSequence + 1 ||
         frame.requiresFullTextRepaint ||
         frame.requiresFullGraphicsReplay ||
         frame.cells.isEmpty() ||

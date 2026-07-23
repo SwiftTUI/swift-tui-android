@@ -32,6 +32,7 @@ class SwiftTUIHostState internal constructor(
 
   private var handle by mutableLongStateOf(0L)
   private var lastResize: HostResize? = null
+  private val webSurfaceSession = SwiftTUIWebSurfaceSession()
 
   fun start() {
     if (handle == 0L) {
@@ -43,7 +44,10 @@ class SwiftTUIHostState internal constructor(
     }
     // Declare wire capabilities before the scene starts — the Swift host
     // rejects declarations once running, and an older host library without
-    // the entry point ignores this (defaults = today's wire bytes).
+    // the entry point ignores this (defaults = today's wire bytes). The
+    // declaration selects the converged web-surface wire, so the decoder
+    // session's delta baseline resets with the scene.
+    webSurfaceSession.reset()
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
     SwiftTUIJni.start(handle)
@@ -169,9 +173,16 @@ class SwiftTUIHostState internal constructor(
     if (copied <= bytes.size) {
       val json = bytes.decodeToString(0, copied.coerceAtMost(bytes.size))
       runCatching {
-        SwiftTUIFrame.parse(json)
+        // Converged hosts serve RS-framed web-surface records (selected by
+        // the capability declaration); older hosts keep the legacy keyed
+        // JSON. Sniffing keeps every host/library pairing working.
+        if (SwiftTUIWebSurfaceSession.isWebSurfaceRecord(json)) {
+          webSurfaceSession.decode(json)
+        } else {
+          SwiftTUIFrame.parse(json)
+        }
       }.onSuccess { parsedFrame ->
-        if (parsedFrame.sequence != frame?.sequence) {
+        if (parsedFrame != null && parsedFrame.sequence != frame?.sequence) {
           frame = parsedFrame
           lastError = null
         }
