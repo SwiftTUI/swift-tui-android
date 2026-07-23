@@ -17,17 +17,15 @@ class SwiftTUIDamagePlanTest {
     gridWidth: Int = 10,
     gridHeight: Int = 5
   ) = SwiftTUIFrame(
-    schemaVersion = 2,
     sequence = sequence,
-    // The plan guards on consumption contiguity; legacy frames stamp their
-    // sequence, so these tests keep driving the guard through `sequence`.
+    // The plan guards on consumption contiguity; these tests drive the guard
+    // through `sequence`-valued generations.
     consumedGeneration = sequence,
     gridWidth = gridWidth,
     gridHeight = gridHeight,
     preferredGridWidth = null,
     preferredGridHeight = null,
     terminalStyle = SwiftTUITerminalStyle.Default,
-    rows = emptyList(),
     cells = cells,
     imageAttachments = images,
     focusedIdentity = null,

@@ -12,13 +12,10 @@ class SwiftTUIWireCapabilitiesTest {
     // here would silently under-declare.
     val declaration = JSONObject(SwiftTUIWireCapabilities.declarationJson())
 
-    assertEquals(3, declaration.length())
-    assertEquals(
-      SwiftTUIFrame.SUPPORTED_SCHEMA_VERSION,
-      declaration.getInt("maxAndroidSchemaVersion")
-    )
+    assertEquals(2, declaration.length())
     // The converged web-surface ceiling tracks the decoder session's
-    // supported version, and delta acceptance follows v3 support.
+    // supported version, and delta acceptance follows v3 support. The
+    // legacy schema key retired with the keyed-JSON wire (Stage C4).
     assertEquals(
       SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION,
       declaration.getInt("maxWebSurfaceVersion")

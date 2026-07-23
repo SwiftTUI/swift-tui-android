@@ -145,7 +145,6 @@ class SwiftTUIWebSurfaceSession {
 
     consumedGeneration += 1
     return SwiftTUIFrame(
-      schemaVersion = SwiftTUIFrame.SUPPORTED_SCHEMA_VERSION,
       sequence = record.optLong("sequence", 0L),
       // Contiguous per decoded frame: the converged wire's damage is
       // consumption-relative (the Swift host accumulates it across skipped
@@ -157,9 +156,6 @@ class SwiftTUIWebSurfaceSession {
       preferredGridHeight = record.optionalIntWeb("preferredGridHeight"),
       terminalStyle = record.optJSONObject("terminalStyle")?.toWebTerminalStyle()
         ?: SwiftTUITerminalStyle.Default,
-      // The plain-text rows array exists only for the legacy keyed-JSON
-      // draw fallback; converged frames always carry cells.
-      rows = emptyList(),
       cells = linkedCells,
       imageAttachments = record.optJSONArray("images").objects().map { it.toWebImageAttachment() },
       focusedIdentity = focusPresentation.focusedIdentity,

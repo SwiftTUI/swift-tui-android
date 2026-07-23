@@ -1,8 +1,5 @@
 package sh.swifttui.android.host
 
-import org.json.JSONArray
-import org.json.JSONObject
-
 data class SwiftTUIColor(
   val hex: String
 )
@@ -159,7 +156,6 @@ data class SwiftTUITextDamageRow(
 )
 
 data class SwiftTUIFrame(
-  val schemaVersion: Int,
   val sequence: Long,
   /**
    * Consumption-order stamp for the renderer's retained-bitmap guard. On the
@@ -175,7 +171,6 @@ data class SwiftTUIFrame(
   val preferredGridWidth: Int?,
   val preferredGridHeight: Int?,
   val terminalStyle: SwiftTUITerminalStyle,
-  val rows: List<String>,
   val cells: List<SwiftTUICell>,
   val imageAttachments: List<SwiftTUIImageAttachment>,
   val focusedIdentity: String?,
@@ -228,216 +223,4 @@ data class SwiftTUIFrame(
     }
   }
 
-  companion object {
-    /**
-     * The newest frame schema this library understands. Every field parse is
-     * tolerant-defaulted so *older* frames render fine, but a frame declaring
-     * a NEWER schema version must fail loudly ([parse] throws and the host
-     * surfaces it via `lastError`) instead of tolerant-parsing to garbage —
-     * silent skew is the failure mode this guards against (F57).
-     */
-    const val SUPPORTED_SCHEMA_VERSION = 2
-
-    fun parse(json: String): SwiftTUIFrame {
-      val objectValue = JSONObject(json)
-      val declaredSchemaVersion = objectValue.optInt("schemaVersion", 1)
-      require(declaredSchemaVersion <= SUPPORTED_SCHEMA_VERSION) {
-        "SwiftTUI frame schemaVersion $declaredSchemaVersion is newer than the supported " +
-          "$SUPPORTED_SCHEMA_VERSION; update the swift-tui-android host library."
-      }
-      val rows = objectValue.optJSONArray("rows").strings()
-      val cells = objectValue.optJSONArray("cells").objects().map { it.toCell() }
-      val dirtyRows = objectValue.optJSONArray("dirtyRows").ints()
-      val terminalStyle = objectValue.optJSONObject("terminalStyle")?.toTerminalStyle()
-        ?: SwiftTUITerminalStyle.Default
-
-      return SwiftTUIFrame(
-        schemaVersion = objectValue.optInt("schemaVersion", 1),
-        sequence = objectValue.optLong("sequence", 0L),
-        consumedGeneration = objectValue.optLong("sequence", 0L),
-        gridWidth = objectValue.optInt("gridWidth", rows.maxOfOrNull { it.length } ?: 0),
-        gridHeight = objectValue.optInt("gridHeight", rows.size),
-        preferredGridWidth = objectValue.optionalInt("preferredGridWidth"),
-        preferredGridHeight = objectValue.optionalInt("preferredGridHeight"),
-        terminalStyle = terminalStyle,
-        rows = rows,
-        cells = cells,
-        imageAttachments = objectValue.optJSONArray("imageAttachments").objects().map {
-          it.toImageAttachment()
-        },
-        focusedIdentity = objectValue.optionalString("focusedIdentity"),
-        focusPresentation = objectValue.optJSONObject("focusPresentation")?.toFocusPresentation()
-          ?: SwiftTUIFocusPresentation.None,
-        accessibilityNodes = objectValue.optJSONArray("accessibilityNodes").objects().map {
-          it.toAccessibilityNode()
-        },
-        accessibilityAnnouncements = objectValue.optJSONArray("accessibilityAnnouncements")
-          .objects()
-          .map { it.toAccessibilityAnnouncement() },
-        scrollRegions = objectValue.optJSONArray("scrollRegions").objects().map {
-          it.toScrollRegion()
-        },
-        dirtyRows = dirtyRows,
-        textDamageRows = objectValue.optJSONArray("textDamageRows").objects().map {
-          it.toTextDamageRow()
-        },
-        requiresFullTextRepaint = objectValue.optBoolean("requiresFullTextRepaint", true),
-        requiresFullGraphicsReplay = objectValue.optBoolean("requiresFullGraphicsReplay", true)
-      )
-    }
-  }
-}
-
-private fun JSONObject.toTerminalStyle(): SwiftTUITerminalStyle =
-  SwiftTUITerminalStyle(
-    foregroundColor = color("foregroundColor") ?: SwiftTUITerminalStyle.Default.foregroundColor,
-    backgroundColor = color("backgroundColor") ?: SwiftTUITerminalStyle.Default.backgroundColor,
-    tintColor = color("tintColor") ?: SwiftTUITerminalStyle.Default.tintColor
-  )
-
-private fun JSONObject.toCell(): SwiftTUICell =
-  SwiftTUICell(
-    x = optInt("x"),
-    y = optInt("y"),
-    character = optString("character", " "),
-    spanWidth = optInt("spanWidth", 1),
-    continuationLeadX = optionalInt("continuationLeadX"),
-    style = optJSONObject("style")?.toTextStyle(),
-    hyperlink = optionalString("hyperlink")
-  )
-
-private fun JSONObject.toTextStyle(): SwiftTUITextStyle =
-  SwiftTUITextStyle(
-    foregroundColor = color("foregroundColor"),
-    backgroundColor = color("backgroundColor"),
-    emphasis = optJSONArray("emphasis").strings().toSet(),
-    underlineStyle = optJSONObject("underlineStyle")?.toTextLineStyle(),
-    strikethroughStyle = optJSONObject("strikethroughStyle")?.toTextLineStyle(),
-    opacity = optDouble("opacity", 1.0)
-  )
-
-private fun JSONObject.toTextLineStyle(): SwiftTUITextLineStyle =
-  SwiftTUITextLineStyle(
-    pattern = optString("pattern", "solid"),
-    color = color("color")
-  )
-
-private fun JSONObject.toImageAttachment(): SwiftTUIImageAttachment =
-  SwiftTUIImageAttachment(
-    id = optString("id"),
-    bounds = optJSONObject("bounds").toRectOrZero(),
-    visibleBounds = optJSONObject("visibleBounds").toRectOrZero(),
-    sourceKind = optString("sourceKind", "unknown"),
-    sourceIdentifier = optionalString("sourceIdentifier"),
-    payloadBase64 = optionalString("payloadBase64"),
-    payloadByteCount = optionalInt("payloadByteCount"),
-    pixelSize = optJSONObject("pixelSize")?.toPixelSize(),
-    cellPixelSize = optJSONObject("cellPixelSize")?.toPixelSize(),
-    isResizable = optBoolean("isResizable"),
-    scalingMode = optString("scalingMode", "stretch")
-  )
-
-private fun JSONObject.toFocusPresentation(): SwiftTUIFocusPresentation =
-  SwiftTUIFocusPresentation(
-    focusedIdentity = optionalString("focusedIdentity"),
-    semantics = optString("semantics", "none"),
-    prefersTextInput = optBoolean("prefersTextInput"),
-    hasFocusedRegion = optBoolean("hasFocusedRegion")
-  )
-
-private fun JSONObject.toAccessibilityNode(): SwiftTUIAccessibilityNode =
-  SwiftTUIAccessibilityNode(
-    id = optString("id"),
-    parentID = optionalString("parentID"),
-    rect = optJSONObject("rect").toRectOrZero(),
-    role = optString("role", "group"),
-    label = optionalString("label"),
-    hint = optionalString("hint"),
-    hidden = optBoolean("hidden"),
-    liveRegion = optionalString("liveRegion"),
-    cursorAnchor = optJSONObject("cursorAnchor")?.toPoint(),
-    isFocused = optBoolean("isFocused")
-  )
-
-private fun JSONObject.toAccessibilityAnnouncement(): SwiftTUIAccessibilityAnnouncement =
-  SwiftTUIAccessibilityAnnouncement(
-    message = optString("message"),
-    politeness = optString("politeness", "polite")
-  )
-
-private fun JSONObject.toTextDamageRow(): SwiftTUITextDamageRow =
-  SwiftTUITextDamageRow(
-    row = optInt("row"),
-    columnRanges = optJSONArray("columnRanges").objects().map {
-      SwiftTUIRange(
-        lowerBound = it.optInt("lowerBound"),
-        upperBound = it.optInt("upperBound")
-      )
-    }
-  )
-
-private fun JSONObject.toScrollRegion(): SwiftTUIScrollRegion =
-  SwiftTUIScrollRegion(
-    id = optString("id"),
-    rect = optJSONObject("rect").toRectOrZero(),
-    offset = optJSONObject("offset")?.toPoint() ?: SwiftTUIPoint(x = 0, y = 0),
-    content = optJSONObject("content")?.toCellSize() ?: SwiftTUICellSize(width = 0, height = 0)
-  )
-
-private fun JSONObject?.toRectOrZero(): SwiftTUIRect =
-  this?.let {
-    SwiftTUIRect(
-      x = optInt("x"),
-      y = optInt("y"),
-      width = optInt("width"),
-      height = optInt("height")
-    )
-  } ?: SwiftTUIRect(x = 0, y = 0, width = 0, height = 0)
-
-private fun JSONObject.toPoint(): SwiftTUIPoint =
-  SwiftTUIPoint(
-    x = optInt("x"),
-    y = optInt("y")
-  )
-
-private fun JSONObject.toPixelSize(): SwiftTUIPixelSize =
-  SwiftTUIPixelSize(
-    width = optInt("width"),
-    height = optInt("height")
-  )
-
-private fun JSONObject.toCellSize(): SwiftTUICellSize =
-  SwiftTUICellSize(
-    width = optInt("width"),
-    height = optInt("height")
-  )
-
-private fun JSONObject.color(name: String): SwiftTUIColor? =
-  optJSONObject(name)?.optionalString("hex")?.let { SwiftTUIColor(it) }
-
-private fun JSONObject.optionalInt(name: String): Int? =
-  if (has(name) && !isNull(name)) optInt(name) else null
-
-private fun JSONObject.optionalString(name: String): String? =
-  if (has(name) && !isNull(name)) optString(name) else null
-
-private fun JSONArray?.objects(): List<JSONObject> = buildList {
-  val array = this@objects ?: return@buildList
-  for (index in 0 until array.length()) {
-    array.optJSONObject(index)?.let(::add)
-  }
-}
-
-private fun JSONArray?.strings(): List<String> = buildList {
-  val array = this@strings ?: return@buildList
-  for (index in 0 until array.length()) {
-    add(array.optString(index))
-  }
-}
-
-private fun JSONArray?.ints(): List<Int> = buildList {
-  val array = this@ints ?: return@buildList
-  for (index in 0 until array.length()) {
-    add(array.optInt(index))
-  }
 }

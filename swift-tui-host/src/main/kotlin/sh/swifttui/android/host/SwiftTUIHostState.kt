@@ -173,14 +173,15 @@ class SwiftTUIHostState internal constructor(
     if (copied <= bytes.size) {
       val json = bytes.decodeToString(0, copied.coerceAtMost(bytes.size))
       runCatching {
-        // Converged hosts serve RS-framed web-surface records (selected by
-        // the capability declaration); older hosts keep the legacy keyed
-        // JSON. Sniffing keeps every host/library pairing working.
-        if (SwiftTUIWebSurfaceSession.isWebSurfaceRecord(json)) {
-          webSurfaceSession.decode(json)
-        } else {
-          SwiftTUIFrame.parse(json)
+        // The converged web-surface wire is the only frame format since the
+        // legacy keyed-JSON wire retired (Stage C4). A non-RS payload means
+        // the Swift host library predates convergence.
+        require(SwiftTUIWebSurfaceSession.isWebSurfaceRecord(json)) {
+          "legacy SwiftTUI frame received; the app's swift-tui host library " +
+            "predates the converged web-surface wire — update the swift-tui " +
+            "dependency to match this AAR."
         }
+        webSurfaceSession.decode(json)
       }.onSuccess { parsedFrame ->
         if (parsedFrame != null && parsedFrame.sequence != frame?.sequence) {
           frame = parsedFrame

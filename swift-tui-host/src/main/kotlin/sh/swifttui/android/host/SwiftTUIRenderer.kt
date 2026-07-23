@@ -140,11 +140,7 @@ class SwiftTUIRenderer {
 
     if (plan.fullRepaint) {
       canvas.drawColor(backgroundArgb, PorterDuff.Mode.SRC)
-      if (frame.cells.isEmpty()) {
-        drawLegacyRows(canvas, frame, terminalStyle, style, baselineOffset)
-      } else {
-        drawCells(canvas, frame.cells, terminalStyle, style, baselineOffset)
-      }
+      drawCells(canvas, frame.cells, terminalStyle, style, baselineOffset)
       drawImages(canvas, frame, style)
     } else {
       clearPaint.color = backgroundArgb
@@ -169,28 +165,6 @@ class SwiftTUIRenderer {
     }
 
     lastRenderedSequence = frame.consumedGeneration
-  }
-
-  private fun drawLegacyRows(
-    canvas: Canvas,
-    frame: SwiftTUIFrame,
-    terminalStyle: SwiftTUITerminalStyle,
-    style: SwiftTUIAndroidStyle,
-    baselineOffset: Float
-  ) {
-    textPaint.color = terminalStyle.foregroundColor.toArgb()
-    textPaint.typeface = Typeface.MONOSPACE
-    textPaint.isUnderlineText = false
-    textPaint.isStrikeThruText = false
-
-    frame.rows.forEachIndexed { index, row ->
-      canvas.drawText(
-        row,
-        0f,
-        index * style.cellHeightPx + baselineOffset,
-        textPaint
-      )
-    }
   }
 
   private fun drawCells(

@@ -116,7 +116,6 @@ class SwiftTUIWebSurfaceSessionTest {
     // Absent damage means full repaint, mirroring the legacy wire default.
     assertTrue(frame.requiresFullTextRepaint)
     assertTrue(frame.requiresFullGraphicsReplay)
-    assertTrue(frame.rows.isEmpty())
     assertEquals("OK", frame.cells.joinToString("") { it.character })
   }
 
@@ -255,6 +254,10 @@ class SwiftTUIWebSurfaceSessionTest {
     assertTrue(frame.accessibilityNodes.single().hidden)
     assertEquals("root", frame.accessibilityNodes.single().parentID)
     assertEquals(1, frame.scrollRegions.size)
+    // Topmost-region hit-testing (1-based coordinates), formerly covered by
+    // the retired legacy-parser suite.
+    assertEquals(frame.scrollRegions.single(), frame.scrollRegionAt(2, 1))
+    assertEquals(null, frame.scrollRegionAt(5, 1))
     assertEquals("#708090FF", frame.terminalStyle.tintColor.hex)
     assertEquals("#405060FF", frame.terminalStyle.backgroundColor.hex)
     assertEquals(false, frame.requiresFullTextRepaint)
