@@ -150,6 +150,40 @@ class SwiftTUIWebSurfaceSessionTest {
   }
 
   @Test
+  fun fullRecordsAfterDeltasBecomeTheNewBaseline() {
+    val session = SwiftTUIWebSurfaceSession()
+    val redThenBlue = """[null,{"fg":"#FF0000FF"},{"fg":"#0000FFFF"}]"""
+    val blueThenRed = """[null,{"fg":"#0000FFFF"},{"fg":"#FF0000FF"}]"""
+
+    val firstFull = prefix +
+      """{"version":2,"sequence":1,"width":2,"height":1,"styles":$redThenBlue,""" +
+      """"rows":[[[0,"A",1,1],[1,"B",1,2]]],"images":[]}""" + "\n"
+    requireNotNull(session.decode(firstFull))
+
+    val firstDelta = prefix +
+      """{"version":3,"encoding":"delta","sequence":2,"width":2,"height":1,""" +
+      """"styles":$redThenBlue,""" +
+      """"deltaRows":[[0,[[0,"C",1,2],[1,"D",1,1]]]],"images":[]}""" + "\n"
+    requireNotNull(session.decode(firstDelta))
+
+    val secondFull = prefix +
+      """{"version":2,"sequence":3,"width":2,"height":1,"styles":$blueThenRed,""" +
+      """"rows":[[[0,"E",1,1],[1,"F",1,2]]],"images":[]}""" + "\n"
+    requireNotNull(session.decode(secondFull))
+
+    val finalDelta = prefix +
+      """{"version":3,"encoding":"delta","sequence":4,"width":2,"height":1,""" +
+      """"styles":$blueThenRed,""" +
+      """"deltaRows":[[0,[[0,"G",1,2],[1,"H",1,1]]]],"images":[]}""" + "\n"
+    val frame = requireNotNull(session.decode(finalDelta))
+
+    assertEquals("G", frame.cellAt(1, 1)?.character)
+    assertEquals("#FF0000FF", frame.cellAt(1, 1)?.style?.foregroundColor?.hex)
+    assertEquals("H", frame.cellAt(2, 1)?.character)
+    assertEquals("#0000FFFF", frame.cellAt(2, 1)?.style?.foregroundColor?.hex)
+  }
+
+  @Test
   fun deltaGuardsMirrorTheBrowserDecoder() {
     val session = SwiftTUIWebSurfaceSession()
     val delta = prefix +
