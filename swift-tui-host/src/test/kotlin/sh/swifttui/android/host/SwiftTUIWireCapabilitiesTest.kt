@@ -7,19 +7,16 @@ import org.junit.Test
 class SwiftTUIWireCapabilitiesTest {
   @Test
   fun declarationTracksTheSupportedSchemaVersion() {
-    // The ceiling must follow the decoder's supported version so landing a
-    // newer-schema decoder automatically declares it — a hardcoded literal
-    // here would silently under-declare.
+    // Delta acceptance must follow the decoder's supported version so landing
+    // a newer decoder automatically declares it — a hardcoded literal here
+    // would silently under-declare.
     val declaration = JSONObject(SwiftTUIWireCapabilities.declarationJson())
 
-    assertEquals(2, declaration.length())
-    // The converged web-surface ceiling tracks the decoder session's
-    // supported version, and delta acceptance follows v3 support. The
-    // legacy schema key retired with the keyed-JSON wire (Stage C4).
-    assertEquals(
-      SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION,
-      declaration.getInt("maxWebSurfaceVersion")
-    )
+    // Capabilities are named feature bits: exactly one key. `maxWebSurfaceVersion`
+    // retired alongside `maxAndroidSchemaVersion` (Stage C4) — it declared a
+    // ceiling the encoder only read as "accepts delta or not", duplicating the
+    // version check this decoder already performs on every record.
+    assertEquals(1, declaration.length())
     assertEquals(
       SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION >= 3,
       declaration.getBoolean("acceptsDeltaFrames")
