@@ -12,8 +12,8 @@ hostConfig.packageDirectory.convention(layout.projectDirectory.dir("../SwiftPack
 hostConfig.swiftTuiCheckout.convention(layout.projectDirectory.dir("../../../swift-tui"))
 
 val swiftSdkName = "aarch64-unknown-linux-android28"
-val swiftToolchainVersion = "+6.3.1"
-val swiftSdkArtifactName = "swift-6.3.2-RELEASE_android"
+val swiftToolchainVersion = "+6.3.3"
+val swiftSdkArtifactName = "swift-6.3.3-RELEASE_android"
 val swiftTuiDependencyUrl = "https://github.com/SwiftTUI/swift-tui.git"
 val swiftBuildSubpath = ".build/$swiftSdkName/debug"
 val generatedJniLibsDir = layout.buildDirectory.dir("generated/swiftJniLibs")
