@@ -35,13 +35,25 @@ class SwiftTUIWebSurfaceSession {
   private var baselineRows: List<List<CellTuple>>? = null
   private var baselineWidth = 0
   private var baselineHeight = 0
+  private var lastEpoch: Long? = null
+  private var lastGeneration: Long? = null
   private var consumedGeneration = 0L
+
+  internal var pendingResyncScope: String? = null
+    private set
 
   fun reset() {
     baselineRows = null
     baselineWidth = 0
     baselineHeight = 0
+    lastEpoch = null
+    lastGeneration = null
+    pendingResyncScope = null
     consumedGeneration = 0L
+  }
+
+  internal fun requestKeyframeRecovery() {
+    pendingResyncScope = KEYFRAME_RESYNC_SCOPE
   }
 
   /**
@@ -68,32 +80,57 @@ class SwiftTUIWebSurfaceSession {
 
   private fun decodeFull(record: JSONObject): SwiftTUIFrame {
     val rows = parseRowTuples(record.optJSONArray("rows"))
+    val stamp = record.fullFrameStamp()
     baselineRows = rows
     baselineWidth = record.optInt("width")
     baselineHeight = record.optInt("height")
+    lastEpoch = stamp.epoch
+    lastGeneration = stamp.generation
+    pendingResyncScope = null
     return buildFrame(record, rows)
   }
 
   private fun decodeDelta(record: JSONObject): SwiftTUIFrame? {
-    val baseline = baselineRows ?: return null
+    if (pendingResyncScope != null) {
+      return null
+    }
+    val stamp = record.deltaFrameStamp()
+    val carriesBaselineStamp = stamp.epoch != null && stamp.baselineGeneration != null
+    val baseline = baselineRows ?: return refuseDelta(carriesBaselineStamp)
     val width = record.optInt("width")
     val height = record.optInt("height")
     if (width != baselineWidth || height != baselineHeight) {
-      return null
+      return refuseDelta(carriesBaselineStamp)
+    }
+
+    if (
+      carriesBaselineStamp &&
+      (stamp.epoch != lastEpoch || stamp.baselineGeneration != lastGeneration)
+    ) {
+      return refuseDelta(shouldRequestKeyframe = true)
     }
 
     val rows = baseline.toMutableList()
     val deltaRows = record.optJSONArray("deltaRows") ?: JSONArray()
     for (index in 0 until deltaRows.length()) {
-      val entry = deltaRows.optJSONArray(index) ?: return null
+      val entry = deltaRows.optJSONArray(index) ?: return refuseDelta(carriesBaselineStamp)
       val row = entry.optInt(0, -1)
       if (row < 0 || row >= height || row >= rows.size) {
-        return null
+        return refuseDelta(carriesBaselineStamp)
       }
       rows[row] = parseCellTuples(row, entry.optJSONArray(1))
     }
     baselineRows = rows
+    lastEpoch = stamp.epoch
+    lastGeneration = stamp.generation
     return buildFrame(record, rows)
+  }
+
+  private fun refuseDelta(shouldRequestKeyframe: Boolean): SwiftTUIFrame? {
+    if (shouldRequestKeyframe) {
+      requestKeyframeRecovery()
+    }
+    return null
   }
 
   private fun parseRowTuples(array: JSONArray?): List<List<CellTuple>> = buildList {
@@ -244,6 +281,7 @@ class SwiftTUIWebSurfaceSession {
 
   companion object {
     const val RECORD_PREFIX = "\u001Esurface:"
+    internal const val KEYFRAME_RESYNC_SCOPE = "keyframe"
 
     /**
      * The newest web-surface version this decoder understands. The Kotlin
@@ -256,6 +294,30 @@ class SwiftTUIWebSurfaceSession {
     fun isWebSurfaceRecord(payload: String): Boolean = payload.startsWith(RECORD_PREFIX)
   }
 }
+
+private data class FullFrameStamp(
+  val epoch: Long?,
+  val generation: Long?
+)
+
+private data class DeltaFrameStamp(
+  val epoch: Long?,
+  val generation: Long?,
+  val baselineGeneration: Long?
+)
+
+private fun JSONObject.fullFrameStamp(): FullFrameStamp =
+  FullFrameStamp(
+    epoch = optionalSafeWireInteger("epoch"),
+    generation = optionalSafeWireInteger("gen")
+  )
+
+private fun JSONObject.deltaFrameStamp(): DeltaFrameStamp =
+  DeltaFrameStamp(
+    epoch = optionalSafeWireInteger("epoch"),
+    generation = optionalSafeWireInteger("gen"),
+    baselineGeneration = optionalSafeWireInteger("baselineGen")
+  )
 
 /** Web text emphasis rides the wire as the Swift `TextEmphasis` bitmask. */
 private fun emphasisTokens(bitmask: Int): Set<String> = buildSet {
@@ -368,6 +430,23 @@ private fun JSONObject.optionalStringWeb(name: String): String? =
 private fun JSONObject.optionalIntWeb(name: String): Int? =
   if (has(name) && !isNull(name)) optInt(name) else null
 
+private fun JSONObject.optionalSafeWireInteger(name: String): Long? {
+  if (!has(name)) {
+    return null
+  }
+  val value = get(name)
+  require(value is Number) { "web-surface $name must be an integer" }
+  val asDouble = value.toDouble()
+  require(
+    asDouble.isFinite() &&
+      asDouble >= -MAX_SAFE_WIRE_INTEGER.toDouble() &&
+      asDouble <= MAX_SAFE_WIRE_INTEGER.toDouble() &&
+      asDouble % 1.0 == 0.0
+  ) {
+    "web-surface $name must be a safe integer"
+  }
+  return asDouble.toLong()
+}
 
 private fun JSONArray?.objects(): List<JSONObject> = buildList {
   val array = this@objects ?: return@buildList
@@ -375,6 +454,8 @@ private fun JSONArray?.objects(): List<JSONObject> = buildList {
     array.optJSONObject(index)?.let(::add)
   }
 }
+
+private const val MAX_SAFE_WIRE_INTEGER = 9_007_199_254_740_991L
 
 private fun JSONArray?.strings(): List<String> = buildList {
   val array = this@strings ?: return@buildList

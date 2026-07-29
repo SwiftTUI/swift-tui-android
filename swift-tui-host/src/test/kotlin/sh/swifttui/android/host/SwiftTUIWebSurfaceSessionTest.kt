@@ -3,6 +3,7 @@ package sh.swifttui.android.host
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class SwiftTUIWebSurfaceSessionTest {
@@ -207,6 +208,104 @@ class SwiftTUIWebSurfaceSessionTest {
   }
 
   @Test
+  fun stampedDeltaRefusalWaitsForAFullFrameAndThenRecovers() {
+    val session = SwiftTUIWebSurfaceSession()
+    requireNotNull(
+      session.decode(
+        fullRecord(sequence = 1, rowText = listOf("ab"), epoch = 41, generation = 1)
+      )
+    )
+
+    // Generation 2 was delivered by the producer but dropped before this
+    // decoder. Generation 3 therefore names a baseline we do not retain.
+    assertNull(
+      session.decode(
+        deltaRecord(
+          sequence = 3,
+          rowText = "XY",
+          epoch = 41,
+          generation = 3,
+          baselineGeneration = 2
+        )
+      )
+    )
+    assertEquals(
+      SwiftTUIWebSurfaceSession.KEYFRAME_RESYNC_SCOPE,
+      session.pendingResyncScope
+    )
+
+    // Once repair is pending, even a delta that names the old retained
+    // baseline is refused. Only a full frame can re-anchor the session.
+    assertNull(
+      session.decode(
+        deltaRecord(
+          sequence = 4,
+          rowText = "ZZ",
+          epoch = 41,
+          generation = 4,
+          baselineGeneration = 1
+        )
+      )
+    )
+
+    val keyframe = requireNotNull(
+      session.decode(
+        fullRecord(sequence = 4, rowText = listOf("KF"), epoch = 41, generation = 4)
+      )
+    )
+    assertEquals("KF", keyframe.cells.joinToString("") { it.character })
+    assertNull(session.pendingResyncScope)
+
+    val recovered = requireNotNull(
+      session.decode(
+        deltaRecord(
+          sequence = 5,
+          rowText = "OK",
+          epoch = 41,
+          generation = 5,
+          baselineGeneration = 4
+        )
+      )
+    )
+    assertEquals("OK", recovered.cells.joinToString("") { it.character })
+  }
+
+  @Test
+  fun unstampedFramesKeepTheLegacyDeltaBehavior() {
+    val session = SwiftTUIWebSurfaceSession()
+    requireNotNull(session.decode(fullRecord(sequence = 1, rowText = listOf("ab"))))
+
+    val frame = requireNotNull(
+      session.decode(
+        deltaRecord(
+          sequence = 2,
+          rowText = "XY",
+          epoch = null,
+          generation = null,
+          baselineGeneration = null
+        )
+      )
+    )
+
+    assertEquals("XY", frame.cells.joinToString("") { it.character })
+    assertNull(session.pendingResyncScope)
+  }
+
+  @Test
+  fun partialStampsStayAdditiveOptionalWhileUnsafeStampsAreRejected() {
+    val session = SwiftTUIWebSurfaceSession()
+    val partial = prefix +
+      """{"version":2,"epoch":1,"width":1,"height":1,"styles":[null],""" +
+      """"rows":[[[0,"X",1,0]]],"images":[]}""" + "\n"
+    val unsafe = prefix +
+      """{"version":2,"epoch":1,"gen":9007199254740992,"width":1,"height":1,""" +
+      """"styles":[null],"rows":[[[0,"X",1,0]]],"images":[]}""" + "\n"
+
+    assertEquals("X", requireNotNull(session.decode(partial)).cells.single().character)
+    assertThrows(IllegalArgumentException::class.java) { session.decode(unsafe) }
+  }
+
+  @Test
   fun fullRecordsAfterDeltasBecomeTheNewBaseline() {
     val session = SwiftTUIWebSurfaceSession()
     val redThenBlue = """[null,{"fg":"#FF0000FF"},{"fg":"#0000FFFF"}]"""
@@ -251,10 +350,12 @@ class SwiftTUIWebSurfaceSessionTest {
 
     // No baseline yet: the delta is dropped, not an error.
     assertNull(session.decode(delta))
+    assertNull(session.pendingResyncScope)
 
     // A size-mismatched baseline drops the delta too.
     session.decode(fullRecord(sequence = 1, rowText = listOf("abc")))
     assertNull(session.decode(delta))
+    assertNull(session.pendingResyncScope)
 
     // A row index outside the grid is rejected.
     session.decode(fullRecord(sequence = 3, rowText = listOf("ab", "cd")))
@@ -264,6 +365,34 @@ class SwiftTUIWebSurfaceSessionTest {
       """"damage":{"textRows":[[0,[[0,1]]]],"requiresFullTextRepaint":false,""" +
       """"requiresFullGraphicsReplay":false}}""" + "\n"
     assertNull(session.decode(badRow))
+    assertNull(session.pendingResyncScope)
+  }
+
+  @Test
+  fun stampedInapplicableDeltasRequestKeyframeRepair() {
+    val session = SwiftTUIWebSurfaceSession()
+    val stamped = deltaRecord(
+      sequence = 2,
+      rowText = "XY",
+      epoch = 91,
+      generation = 2,
+      baselineGeneration = 1
+    )
+
+    assertNull(session.decode(stamped))
+    assertEquals(
+      SwiftTUIWebSurfaceSession.KEYFRAME_RESYNC_SCOPE,
+      session.pendingResyncScope
+    )
+
+    session.decode(
+      fullRecord(sequence = 2, rowText = listOf("abc"), epoch = 91, generation = 2)
+    )
+    assertNull(session.decode(stamped))
+    assertEquals(
+      SwiftTUIWebSurfaceSession.KEYFRAME_RESYNC_SCOPE,
+      session.pendingResyncScope
+    )
   }
 
   @Test
@@ -376,15 +505,46 @@ class SwiftTUIWebSurfaceSessionTest {
     assertEquals("fit", image.scalingMode)
   }
 
-  private fun fullRecord(sequence: Long, rowText: List<String>): String {
+  private fun fullRecord(
+    sequence: Long,
+    rowText: List<String>,
+    epoch: Long? = null,
+    generation: Long? = null
+  ): String {
     val rows = rowText.joinToString(",", prefix = "[", postfix = "]") { text ->
       text.mapIndexed { x, character ->
         """[$x,"$character",1,0]"""
       }.joinToString(",", prefix = "[", postfix = "]")
     }
     val width = rowText.maxOf { it.length }
+    val stamp = if (epoch != null && generation != null) {
+      """"epoch":$epoch,"gen":$generation,"""
+    } else {
+      ""
+    }
     return prefix +
-      """{"version":2,"sequence":$sequence,"width":$width,""" +
+      """{"version":2,$stamp"sequence":$sequence,"width":$width,""" +
       """"height":${rowText.size},"styles":[null],"rows":$rows,"images":[]}""" + "\n"
+  }
+
+  private fun deltaRecord(
+    sequence: Long,
+    rowText: String,
+    epoch: Long?,
+    generation: Long?,
+    baselineGeneration: Long?
+  ): String {
+    val cells = rowText.mapIndexed { x, character ->
+      """[$x,"$character",1,0]"""
+    }.joinToString(",", prefix = "[", postfix = "]")
+    val stamp = if (epoch != null && generation != null && baselineGeneration != null) {
+      """"epoch":$epoch,"gen":$generation,"baselineGen":$baselineGeneration,"""
+    } else {
+      ""
+    }
+    return prefix +
+      """{"version":3,"encoding":"delta",$stamp"sequence":$sequence,""" +
+      """"width":${rowText.length},"height":1,"styles":[null],""" +
+      """"deltaRows":[[0,$cells]],"images":[]}""" + "\n"
   }
 }

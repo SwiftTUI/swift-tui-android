@@ -33,6 +33,11 @@ class SwiftTUIHostState internal constructor(
   private var handle by mutableLongStateOf(0L)
   private var lastResize: HostResize? = null
   private val webSurfaceSession = SwiftTUIWebSurfaceSession()
+  private val framePoller = SwiftTUIFramePoller(
+    session = webSurfaceSession,
+    copyLatestFrame = SwiftTUIJni::copyLatestFrame,
+    requestResync = SwiftTUIJni::requestResync
+  )
 
   fun start() {
     if (handle == 0L) {
@@ -47,7 +52,7 @@ class SwiftTUIHostState internal constructor(
     // the entry point ignores this (defaults = today's wire bytes). The
     // declaration selects the converged web-surface wire, so the decoder
     // session's delta baseline resets with the scene.
-    webSurfaceSession.reset()
+    framePoller.reset()
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
     SwiftTUIJni.start(handle)
@@ -163,33 +168,15 @@ class SwiftTUIHostState internal constructor(
       return
     }
 
-    val needed = SwiftTUIJni.copyLatestFrame(currentHandle, null, 0)
-    if (needed <= 0) {
-      return
-    }
-
-    val bytes = ByteArray(needed)
-    val copied = SwiftTUIJni.copyLatestFrame(currentHandle, bytes, bytes.size)
-    if (copied <= bytes.size) {
-      val json = bytes.decodeToString(0, copied.coerceAtMost(bytes.size))
-      runCatching {
-        // The converged web-surface wire is the only frame format since the
-        // legacy keyed-JSON wire retired (Stage C4). A non-RS payload means
-        // the Swift host library predates convergence.
-        require(SwiftTUIWebSurfaceSession.isWebSurfaceRecord(json)) {
-          "legacy SwiftTUI frame received; the app's swift-tui host library " +
-            "predates the converged web-surface wire — update the swift-tui " +
-            "dependency to match this AAR."
+    when (val result = framePoller.poll(currentHandle)) {
+      SwiftTUIFramePollResult.None -> Unit
+      is SwiftTUIFramePollResult.Frame -> {
+        if (result.value.sequence != frame?.sequence) {
+          frame = result.value
         }
-        webSurfaceSession.decode(json)
-      }.onSuccess { parsedFrame ->
-        if (parsedFrame != null && parsedFrame.sequence != frame?.sequence) {
-          frame = parsedFrame
-          lastError = null
-        }
-      }.onFailure { error ->
-        lastError = error.message ?: error.toString()
+        lastError = null
       }
+      is SwiftTUIFramePollResult.Error -> lastError = result.message
     }
   }
 }
@@ -217,4 +204,3 @@ fun rememberSwiftTUIHostState(): SwiftTUIHostState {
 
   return state
 }
-
