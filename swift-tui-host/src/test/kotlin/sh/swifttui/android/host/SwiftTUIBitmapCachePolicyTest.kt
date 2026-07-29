@@ -99,6 +99,40 @@ class SwiftTUIBitmapCachePolicyTest {
   }
 
   @Test
+  fun payloadOmissionIsDistinctFromInvalidDecode() {
+    var decodeCount = 0
+
+    val omitted: SwiftTUIBitmapResolution<Entry> = SwiftTUIBitmapCachePolicy.resolve(
+      key = "omitted",
+      cached = { null },
+      payload = null as String?,
+      decode = { payload: String ->
+        decodeCount += 1
+        Entry(size = payload.length)
+      },
+      maxSize = { 8 },
+      sizeOf = { entry: Entry -> entry.size },
+      put = { _, _ -> }
+    )
+    val invalid: SwiftTUIBitmapResolution<Entry> = SwiftTUIBitmapCachePolicy.resolve(
+      key = "invalid",
+      cached = { null },
+      payload = "not-an-image",
+      decode = { _: String ->
+        decodeCount += 1
+        null
+      },
+      maxSize = { 8 },
+      sizeOf = { entry: Entry -> entry.size },
+      put = { _, _ -> }
+    )
+
+    assertSame(SwiftTUIBitmapResolution.MissingPayload, omitted)
+    assertSame(SwiftTUIBitmapResolution.InvalidPayload, invalid)
+    assertEquals(1, decodeCount)
+  }
+
+  @Test
   fun cachePressureDistinguishesAlwaysPutBaselineFromGuardedPolicy() {
     for (maxSize in listOf(4 * ONE_MIB, 8 * ONE_MIB)) {
       val baseline = runCachePressure(maxSize, ::alwaysPutThenReturn)

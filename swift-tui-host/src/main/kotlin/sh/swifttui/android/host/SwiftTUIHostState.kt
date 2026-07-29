@@ -32,6 +32,7 @@ class SwiftTUIHostState internal constructor(
 
   private var handle by mutableLongStateOf(0L)
   private var lastResize: HostResize? = null
+  private val missingImagePayloadIds = linkedSetOf<String>()
   private val webSurfaceSession = SwiftTUIWebSurfaceSession()
   private val framePoller = SwiftTUIFramePoller(
     session = webSurfaceSession,
@@ -52,6 +53,7 @@ class SwiftTUIHostState internal constructor(
     // the entry point ignores this (defaults = today's wire bytes). The
     // declaration selects the converged web-surface wire, so the decoder
     // session's delta baseline resets with the scene.
+    missingImagePayloadIds.clear()
     framePoller.reset()
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
@@ -69,6 +71,7 @@ class SwiftTUIHostState internal constructor(
     val currentHandle = handle
     handle = 0L
     lastResize = null
+    missingImagePayloadIds.clear()
     if (currentHandle != 0L) {
       SwiftTUIJni.destroy(currentHandle)
     }
@@ -110,6 +113,10 @@ class SwiftTUIHostState internal constructor(
     if (currentHandle != 0L && bytes.isNotEmpty()) {
       SwiftTUIJni.sendInput(currentHandle, bytes, bytes.size)
     }
+  }
+
+  internal fun reportMissingImagePayload(id: String) {
+    missingImagePayloadIds.add(id)
   }
 
   /** Reads the system clipboard and delivers it to the app as a bracketed paste. */
@@ -168,10 +175,18 @@ class SwiftTUIHostState internal constructor(
       return
     }
 
+    // Rendering happens after frame delivery. Drain its payload-less misses on
+    // every host tick so a request is delivered even when native has no newer
+    // frame to return.
+    if (missingImagePayloadIds.isNotEmpty()) {
+      framePoller.reportMissingImagePayloads(missingImagePayloadIds)
+      missingImagePayloadIds.clear()
+    }
+
     when (val result = framePoller.poll(currentHandle)) {
       SwiftTUIFramePollResult.None -> Unit
       is SwiftTUIFramePollResult.Frame -> {
-        if (result.value.sequence != frame?.sequence) {
+        if (result.shouldPublishOver(frame)) {
           frame = result.value
         }
         lastError = null

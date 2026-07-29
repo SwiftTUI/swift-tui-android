@@ -21,7 +21,11 @@ import kotlin.math.roundToInt
 // state, so it must be instantiated once per host view (via `remember`) rather
 // than shared as a singleton — two hosts sharing one instance would corrupt
 // each other's frames. Pure colour helpers live as file-level functions below.
-class SwiftTUIRenderer {
+class SwiftTUIRenderer internal constructor(
+  private val onMissingImagePayload: (String) -> Unit
+) {
+  constructor() : this(onMissingImagePayload = {})
+
   private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     typeface = Typeface.MONOSPACE
   }
@@ -322,22 +326,27 @@ class SwiftTUIRenderer {
     attachment: SwiftTUIImageAttachment
   ): Bitmap? {
     val cacheKey = bitmapCacheKey(attachment)
-    bitmapCache.get(cacheKey)?.let {
-      return it
-    }
-
-    val payload = attachment.payloadBase64 ?: return null
-    val bytes = runCatching {
-      Base64.decode(payload, Base64.DEFAULT)
-    }.getOrNull() ?: return null
-    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-    return SwiftTUIBitmapCachePolicy.cacheOrReturn(
+    return when (val resolution = SwiftTUIBitmapCachePolicy.resolve(
       key = cacheKey,
-      value = bitmap,
+      cached = { bitmapCache.get(cacheKey) },
+      payload = attachment.payloadBase64,
+      decode = decode@ { payload ->
+        val bytes = runCatching {
+          Base64.decode(payload, Base64.DEFAULT)
+        }.getOrNull() ?: return@decode null
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+      },
       maxSize = bitmapCache::maxSize,
       sizeOf = Bitmap::getByteCount,
       put = bitmapCache::put
-    )
+    )) {
+      is SwiftTUIBitmapResolution.Drawable -> resolution.value
+      SwiftTUIBitmapResolution.MissingPayload -> {
+        onMissingImagePayload(attachment.id)
+        null
+      }
+      SwiftTUIBitmapResolution.InvalidPayload -> null
+    }
   }
 
   private fun bitmapCacheKey(

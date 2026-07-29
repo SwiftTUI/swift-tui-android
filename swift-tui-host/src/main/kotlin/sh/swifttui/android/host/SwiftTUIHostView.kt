@@ -71,7 +71,9 @@ fun SwiftTUIHostView(
   modifier: Modifier = Modifier,
   style: SwiftTUIAndroidStyle = SwiftTUIAndroidStyle.default()
 ) {
-  val renderer = remember { SwiftTUIRenderer() }
+  val renderer = remember(state) {
+    SwiftTUIRenderer(state::reportMissingImagePayload)
+  }
   val focusRequester = remember { FocusRequester() }
   val imeFocusRequester = remember { FocusRequester() }
   var measuredSize by remember { mutableStateOf(IntSize.Zero) }
