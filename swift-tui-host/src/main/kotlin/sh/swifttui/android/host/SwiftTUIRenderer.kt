@@ -247,7 +247,12 @@ class SwiftTUIRenderer {
     style: SwiftTUIAndroidStyle
   ) {
     frame.imageAttachments.forEach { attachment ->
+      val cacheKey = bitmapCacheKey(attachment)
       val bitmap = bitmapFor(attachment) ?: return@forEach
+      if (bitmap.isRecycled) {
+        bitmapCache.remove(cacheKey)
+        return@forEach
+      }
       val bounds = attachment.visibleBounds
       if (bounds.width <= 0 || bounds.height <= 0) {
         return@forEach
@@ -316,7 +321,7 @@ class SwiftTUIRenderer {
   private fun bitmapFor(
     attachment: SwiftTUIImageAttachment
   ): Bitmap? {
-    val cacheKey = "${attachment.id}:${attachment.payloadByteCount ?: 0}"
+    val cacheKey = bitmapCacheKey(attachment)
     bitmapCache.get(cacheKey)?.let {
       return it
     }
@@ -326,9 +331,18 @@ class SwiftTUIRenderer {
       Base64.decode(payload, Base64.DEFAULT)
     }.getOrNull() ?: return null
     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-    bitmapCache.put(cacheKey, bitmap)
-    return bitmap
+    return SwiftTUIBitmapCachePolicy.cacheOrReturn(
+      key = cacheKey,
+      value = bitmap,
+      maxSize = bitmapCache::maxSize,
+      sizeOf = Bitmap::getByteCount,
+      put = bitmapCache::put
+    )
   }
+
+  private fun bitmapCacheKey(
+    attachment: SwiftTUIImageAttachment
+  ): String = "${attachment.id}:${attachment.payloadByteCount ?: 0}"
 }
 
 fun SwiftTUIColor.toComposeColor(): Color = Color(toArgb())
