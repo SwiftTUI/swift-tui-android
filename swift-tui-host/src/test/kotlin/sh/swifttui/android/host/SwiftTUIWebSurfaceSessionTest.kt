@@ -292,17 +292,95 @@ class SwiftTUIWebSurfaceSessionTest {
   }
 
   @Test
-  fun partialStampsStayAdditiveOptionalWhileUnsafeStampsAreRejected() {
+  fun partialAndUnsafeFullStampsAreRejectedWithoutReplacingTheBaseline() {
     val session = SwiftTUIWebSurfaceSession()
+    requireNotNull(
+      session.decode(
+        fullRecord(sequence = 1, rowText = listOf("A"), epoch = 7, generation = 1)
+      )
+    )
     val partial = prefix +
       """{"version":2,"epoch":1,"width":1,"height":1,"styles":[null],""" +
       """"rows":[[[0,"X",1,0]]],"images":[]}""" + "\n"
+    val otherPartial = prefix +
+      """{"version":2,"gen":2,"width":1,"height":1,"styles":[null],""" +
+      """"rows":[[[0,"Y",1,0]]],"images":[]}""" + "\n"
     val unsafe = prefix +
       """{"version":2,"epoch":1,"gen":9007199254740992,"width":1,"height":1,""" +
       """"styles":[null],"rows":[[[0,"X",1,0]]],"images":[]}""" + "\n"
 
-    assertEquals("X", requireNotNull(session.decode(partial)).cells.single().character)
+    assertThrows(IllegalArgumentException::class.java) { session.decode(partial) }
+    assertThrows(IllegalArgumentException::class.java) { session.decode(otherPartial) }
     assertThrows(IllegalArgumentException::class.java) { session.decode(unsafe) }
+
+    val recovered = requireNotNull(
+      session.decode(
+        deltaRecord(
+          sequence = 2,
+          rowText = "B",
+          epoch = 7,
+          generation = 2,
+          baselineGeneration = 1
+        )
+      )
+    )
+    assertEquals("B", recovered.cells.single().character)
+  }
+
+  @Test
+  fun everyPartialDeltaStampIsRejectedBeforeSessionStateChanges() {
+    val stampMembers = listOf(
+      """"epoch":7""",
+      """"gen":2""",
+      """"baselineGen":1"""
+    )
+
+    for (mask in 1 until 7) {
+      val session = SwiftTUIWebSurfaceSession()
+      requireNotNull(
+        session.decode(
+          fullRecord(sequence = 1, rowText = listOf("A"), epoch = 7, generation = 1)
+        )
+      )
+      val stamp = stampMembers.filterIndexed { index, _ ->
+        mask and (1 shl index) != 0
+      }.joinToString(",", postfix = ",")
+      val partial = prefix +
+        """{"version":3,"encoding":"delta",$stamp"sequence":2,"width":1,"height":1,""" +
+        """"styles":[null],"deltaRows":[[0,[[0,"X",1,0]]]],"images":[]}""" + "\n"
+
+      assertThrows("mask=$mask", IllegalArgumentException::class.java) {
+        session.decode(partial)
+      }
+      assertNull(session.pendingResyncScope)
+
+      val recovered = requireNotNull(
+        session.decode(
+          deltaRecord(
+            sequence = 2,
+            rowText = "B",
+            epoch = 7,
+            generation = 2,
+            baselineGeneration = 1
+          )
+        )
+      )
+      assertEquals("mask=$mask", "B", recovered.cells.single().character)
+    }
+  }
+
+  @Test
+  fun explicitNullStampMembersAreRejectedAsStructuralFailures() {
+    val session = SwiftTUIWebSurfaceSession()
+    val nullFull = prefix +
+      """{"version":2,"epoch":null,"gen":1,"width":1,"height":1,"styles":[null],""" +
+      """"rows":[[[0,"X",1,0]]],"images":[]}""" + "\n"
+    val nullDelta = prefix +
+      """{"version":3,"encoding":"delta","epoch":1,"gen":2,"baselineGen":null,""" +
+      """"width":1,"height":1,"styles":[null],"deltaRows":[],"images":[]}""" + "\n"
+
+    assertThrows(IllegalArgumentException::class.java) { session.decode(nullFull) }
+    assertThrows(IllegalArgumentException::class.java) { session.decode(nullDelta) }
   }
 
   @Test

@@ -129,6 +129,34 @@ class SwiftTUIFramePollerTest {
   }
 
   @Test
+  fun partialStampedFrameFailsAtomicallyAndRequestsOneKeyframe() {
+    val native = FakeFrameNative()
+    val poller = native.makePoller()
+
+    native.enqueue(fullRecord(sequence = 1, epoch = 71, generation = 1, text = "A"))
+    assertTrue(poller.poll(4) is SwiftTUIFramePollResult.Frame)
+    native.enqueue(
+      SwiftTUIWebSurfaceSession.RECORD_PREFIX +
+        """{"version":3,"encoding":"delta","epoch":71,"gen":2,"sequence":2,""" +
+        """"width":1,"height":1,"styles":[null],""" +
+        """"deltaRows":[[0,[[0,"X",1,0]]]],"images":[]}""" + "\n"
+    )
+
+    val failure = poller.poll(4)
+
+    assertTrue(failure is SwiftTUIFramePollResult.Error)
+    assertEquals(listOf("""{"scope":"keyframe"}"""), native.resyncRequests)
+
+    native.enqueue(fullRecord(sequence = 3, epoch = 71, generation = 3, text = "K"))
+    val recovered = poller.poll(4)
+    assertTrue(recovered is SwiftTUIFramePollResult.Frame)
+    assertEquals(
+      "K",
+      (recovered as SwiftTUIFramePollResult.Frame).value.cells.single().character
+    )
+  }
+
+  @Test
   fun repeatedImageMissesAreSortedCoalescedAndDispatchedWithoutANewFrame() {
     val native = FakeFrameNative()
     val poller = native.makePoller()

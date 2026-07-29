@@ -79,8 +79,8 @@ class SwiftTUIWebSurfaceSession {
   }
 
   private fun decodeFull(record: JSONObject): SwiftTUIFrame {
-    val rows = parseRowTuples(record.optJSONArray("rows"))
     val stamp = record.fullFrameStamp()
+    val rows = parseRowTuples(record.optJSONArray("rows"))
     baselineRows = rows
     baselineWidth = record.optInt("width")
     baselineHeight = record.optInt("height")
@@ -91,11 +91,14 @@ class SwiftTUIWebSurfaceSession {
   }
 
   private fun decodeDelta(record: JSONObject): SwiftTUIFrame? {
+    // Validate the complete optional stamp tuple before consulting or mutating
+    // session state. A malformed record is structural failure even while a
+    // prior keyframe request is outstanding.
+    val stamp = record.deltaFrameStamp()
     if (pendingResyncScope != null) {
       return null
     }
-    val stamp = record.deltaFrameStamp()
-    val carriesBaselineStamp = stamp.epoch != null && stamp.baselineGeneration != null
+    val carriesBaselineStamp = stamp.epoch != null
     val baseline = baselineRows ?: return refuseDelta(carriesBaselineStamp)
     val width = record.optInt("width")
     val height = record.optInt("height")
@@ -306,18 +309,30 @@ private data class DeltaFrameStamp(
   val baselineGeneration: Long?
 )
 
-private fun JSONObject.fullFrameStamp(): FullFrameStamp =
-  FullFrameStamp(
+private fun JSONObject.fullFrameStamp(): FullFrameStamp {
+  requireTuplePresence("full frame", "epoch", "gen")
+  return FullFrameStamp(
     epoch = optionalSafeWireInteger("epoch"),
     generation = optionalSafeWireInteger("gen")
   )
+}
 
-private fun JSONObject.deltaFrameStamp(): DeltaFrameStamp =
-  DeltaFrameStamp(
+private fun JSONObject.deltaFrameStamp(): DeltaFrameStamp {
+  requireTuplePresence("delta frame", "epoch", "gen", "baselineGen")
+  return DeltaFrameStamp(
     epoch = optionalSafeWireInteger("epoch"),
     generation = optionalSafeWireInteger("gen"),
     baselineGeneration = optionalSafeWireInteger("baselineGen")
   )
+}
+
+private fun JSONObject.requireTuplePresence(recordKind: String, vararg names: String) {
+  val presentCount = names.count(::has)
+  require(presentCount == 0 || presentCount == names.size) {
+    "web-surface $recordKind stamp must contain either none or all of " +
+      names.joinToString()
+  }
+}
 
 /** Web text emphasis rides the wire as the Swift `TextEmphasis` bitmask. */
 private fun emphasisTokens(bitmask: Int): Set<String> = buildSet {
