@@ -102,6 +102,63 @@ class SwiftTUIWebSurfaceSessionTest {
   }
 
   @Test
+  fun unknownWireTokensKeepTheWholeFrameOpenWorld() {
+    val session = SwiftTUIWebSurfaceSession()
+    val record = prefix +
+      """{"version":2,"sequence":47,"width":1,"height":1,"styles":[null],""" +
+      """"rows":[[[0,"X",1,0]]],""" +
+      """"focusPresentation":{"focusedIdentity":"root/field",""" +
+      """"semantics":"future-focus-v47"},""" +
+      """"accessibilityTree":[{"id":"root/field","rect":[0,0,1,1],""" +
+      """"role":"textField","liveRegion":"ambient-v47"}],""" +
+      """"accessibilityAnnouncements":[{"message":"Future message",""" +
+      """"politeness":"interruptive-v47"}],""" +
+      """"images":[{"id":"future:abc:47","format":"avif-v47","bounds":[0,0,1,1],""" +
+      """"visibleBounds":[0,0,1,1],"scalingMode":"cover-v47",""" +
+      """"pixelSize":[1,1],"dataBase64":"eA=="}]}""" + "\n"
+
+    val frame = requireNotNull(session.decode(record))
+
+    // A vocabulary extension cannot reject otherwise usable frame content.
+    assertEquals(47L, frame.sequence)
+    assertEquals("X", frame.cells.single().character)
+    assertEquals("future-focus-v47", frame.focusPresentation.semantics)
+    assertEquals("ambient-v47", frame.accessibilityNodes.single().liveRegion)
+    assertEquals(
+      "interruptive-v47",
+      frame.accessibilityAnnouncements.single().politeness
+    )
+    // Image format is intentionally not represented in the Kotlin model.
+    // Keeping the attachment proves an unknown format is structurally ignored
+    // rather than used as a closed-world frame validator.
+    val image = frame.imageAttachments.single()
+    assertEquals("future:abc:47", image.id)
+    assertEquals("cover-v47", image.scalingMode)
+    assertEquals("eA==", image.payloadBase64)
+  }
+
+  @Test
+  fun absentWireTokensUseTheAndroidDefaults() {
+    val session = SwiftTUIWebSurfaceSession()
+    val record = prefix +
+      """{"version":2,"sequence":48,"width":1,"height":1,"styles":[null],""" +
+      """"rows":[[[0,"D",1,0]]],""" +
+      """"focusPresentation":{"focusedIdentity":"root/field"},""" +
+      """"accessibilityTree":[{"id":"root/field","rect":[0,0,1,1]}],""" +
+      """"accessibilityAnnouncements":[{"message":"Default message"}],""" +
+      """"images":[{"id":"default:abc:48","bounds":[0,0,1,1],""" +
+      """"visibleBounds":[0,0,1,1],"pixelSize":[1,1],""" +
+      """"dataBase64":"ZA=="}]}""" + "\n"
+
+    val frame = requireNotNull(session.decode(record))
+
+    assertEquals("none", frame.focusPresentation.semantics)
+    assertNull(frame.accessibilityNodes.single().liveRegion)
+    assertEquals("polite", frame.accessibilityAnnouncements.single().politeness)
+    assertEquals("stretch", frame.imageAttachments.single().scalingMode)
+  }
+
+  @Test
   fun v1RecordsDefaultTheOptionalSurfaces() {
     val session = SwiftTUIWebSurfaceSession()
     val record = prefix +

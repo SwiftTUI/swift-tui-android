@@ -9,6 +9,10 @@ import org.json.JSONObject
  * `surface:{json}` records, versions 1/2 (full frames) and 3 (delta
  * frames against the previously decoded baseline).
  *
+ * The normative contract lives upstream in
+ * [HOST-WIRE-CONTRACT.md](https://github.com/SwiftTUI/swift-tui/blob/main/docs/HOST-WIRE-CONTRACT.md);
+ * this decoder defers its wire-evolution policy to that document.
+ *
  * Records are mapped into [SwiftTUIFrame], so the renderer, accessibility
  * overlay, damage plan, and hit-testing consume converged frames unchanged.
  * The session holds the delta baseline; [reset] clears it (a fresh scene
