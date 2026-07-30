@@ -19,5 +19,16 @@ package sh.swifttui.android.host
 internal object SwiftTUIWireCapabilities {
   fun declarationJson(): String =
     """{"acceptsDeltaFrames":""" +
-      "${SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION >= 3}}"
+      "${SwiftTUIWebSurfaceSession.SUPPORTED_WEB_SURFACE_VERSION >= 3}," +
+      """"styleAppend":$STYLE_APPEND}"""
+
+  /**
+   * Declared because [SwiftTUIWebSurfaceSession] splices a delta's `styles`
+   * onto its retained table when `stylesBase` is present. Truthful by
+   * construction in the same sense as delta acceptance: the decoder that
+   * declares it is the decoder that ships with it. It replaces a full style
+   * retransmit measured at 69.7% of late-record bytes in a style-churning
+   * epoch.
+   */
+  private const val STYLE_APPEND = true
 }

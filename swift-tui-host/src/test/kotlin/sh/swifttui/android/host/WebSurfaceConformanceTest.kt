@@ -14,7 +14,7 @@ class WebSurfaceConformanceTest {
   fun fullMirrorPassesRawByteHashSchemaApplicabilityAndCensusValidation() {
     val corpus = WebSurfaceConformanceLoader.load()
 
-    assertEquals(9, corpus.entries.size)
+    assertEquals(10, corpus.entries.size)
     assertEquals(
       setOf(
         "android-delivery-commits-copied-candidate",
@@ -24,22 +24,28 @@ class WebSurfaceConformanceTest {
         "canvas-decode-failure-retries-deterministically",
         "image-forget-requests-and-reapplies",
         "web-painter-image-forget-requests-and-reapplies",
+        "style-append-splices-onto-the-retained-table",
         "unknown-token-degrades-per-record",
         "websocket-detached-backlog-reconnects-by-token"
       ),
       corpus.entries.mapTo(linkedSetOf()) { it.scenario }
     )
-    assertFalse(corpus.entries.any { it.requiresStage == "s3d" })
+    // S3d recorded its fixture from the real changed encoder, so `s3d` is part
+    // of the census now rather than forbidden from it.
+    assertEquals(
+      listOf("style-append-splices-onto-the-retained-table"),
+      corpus.entries.filter { it.requiresStage == "s3d" }.map { it.scenario }
+    )
     assertEquals(
       setOf("s3a", "s3b"),
       corpus.entries
-        .filter { it.requiresStage !in setOf("s1", "s2") }
+        .filter { it.requiresStage !in setOf("s1", "s2", "s3d") }
         .mapTo(linkedSetOf()) { it.requiresStage }
     )
   }
 
   @Test
-  fun androidRunsEveryDeclaredS1AndS2ScenarioAndNoOthers() {
+  fun androidRunsEveryDeclaredApplicableScenarioAndNoOthers() {
     val corpus = WebSurfaceConformanceLoader.load()
     val active = WebSurfaceConformanceLoader.activeAndroidFixtures(corpus)
 
@@ -49,6 +55,7 @@ class WebSurfaceConformanceTest {
         "control-steady-delta",
         "epoch-reanchor-and-style-budget-full",
         "image-forget-requests-and-reapplies",
+        "style-append-splices-onto-the-retained-table",
         "unknown-token-degrades-per-record"
       ),
       active.map { it.entry.scenario }

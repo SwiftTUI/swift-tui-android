@@ -208,6 +208,65 @@ class SwiftTUIWebSurfaceSessionTest {
   }
 
   @Test
+  fun anAppendedStyleTableSplicesOntoTheRetainedOne() {
+    val session = SwiftTUIWebSurfaceSession()
+    // Baseline table: index 1 is red.
+    val full = prefix +
+      """{"version":2,"epoch":51,"gen":1,"sequence":1,"width":2,"height":1,""" +
+      """"styles":[null,{"fg":"#FF0000FF"}],""" +
+      """"rows":[[[0,"a",1,1],[1,"b",1,0]]],"images":[]}""" + "\n"
+    requireNotNull(session.decode(full))
+
+    // Negotiated append shape: `stylesBase` names the end of the retained
+    // table, and `styles` carries only the entry this record added.
+    val delta = prefix +
+      """{"version":3,"encoding":"delta","epoch":51,"gen":2,"baselineGen":1,""" +
+      """"sequence":2,"width":2,"height":1,"stylesBase":2,""" +
+      """"styles":[{"fg":"#0000FFFF"}],""" +
+      """"deltaRows":[[0,[[0,"c",1,2],[1,"d",1,1]]]],"images":[]}""" + "\n"
+    val frame = requireNotNull(session.decode(delta))
+
+    // Index 2 is the appended blue entry and index 1 the retained red one, so a
+    // wrong splice offset would paint both cells in the wrong colour.
+    assertEquals("#0000FFFF", frame.cellAt(1, 1)?.style?.foregroundColor?.hex)
+    assertEquals("#FF0000FF", frame.cellAt(2, 1)?.style?.foregroundColor?.hex)
+
+    // The spliced table becomes the retained one for the next append.
+    val second = prefix +
+      """{"version":3,"encoding":"delta","epoch":51,"gen":3,"baselineGen":2,""" +
+      """"sequence":3,"width":2,"height":1,"stylesBase":3,""" +
+      """"styles":[{"fg":"#00FF00FF"}],""" +
+      """"deltaRows":[[0,[[0,"e",1,3],[1,"f",1,2]]]],"images":[]}""" + "\n"
+    val next = requireNotNull(session.decode(second))
+    assertEquals("#00FF00FF", next.cellAt(1, 1)?.style?.foregroundColor?.hex)
+    assertEquals("#0000FFFF", next.cellAt(2, 1)?.style?.foregroundColor?.hex)
+  }
+
+  @Test
+  fun anAppendedStyleTableWithAMismatchedBaseIsRefused() {
+    val session = SwiftTUIWebSurfaceSession()
+    val full = prefix +
+      """{"version":2,"epoch":52,"gen":1,"sequence":1,"width":1,"height":1,""" +
+      """"styles":[null,{"fg":"#FF0000FF"}],""" +
+      """"rows":[[[0,"a",1,1]]],"images":[]}""" + "\n"
+    requireNotNull(session.decode(full))
+
+    // A base of 1 claims the retained table holds one entry; it holds two.
+    // Splicing anyway would silently repaint every cell in the wrong style, so
+    // the record is refused and a keyframe requested instead.
+    val delta = prefix +
+      """{"version":3,"encoding":"delta","epoch":52,"gen":2,"baselineGen":1,""" +
+      """"sequence":2,"width":1,"height":1,"stylesBase":1,""" +
+      """"styles":[{"fg":"#0000FFFF"}],""" +
+      """"deltaRows":[[0,[[0,"c",1,2]]]],"images":[]}""" + "\n"
+    assertNull(session.decode(delta))
+    assertEquals(
+      SwiftTUIWebSurfaceSession.KEYFRAME_RESYNC_SCOPE,
+      session.pendingResyncScope
+    )
+  }
+
+  @Test
   fun stampedDeltaRefusalWaitsForAFullFrameAndThenRecovers() {
     val session = SwiftTUIWebSurfaceSession()
     requireNotNull(

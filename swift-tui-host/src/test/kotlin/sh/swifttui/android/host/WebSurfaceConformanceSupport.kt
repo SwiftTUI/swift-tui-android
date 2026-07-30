@@ -52,7 +52,7 @@ internal object WebSurfaceConformanceLoader {
     "swift-websocket-channel"
   )
   private val stages = setOf("s1", "s2", "s3a", "s3b", "s3d")
-  private val implementedStages = setOf("s1", "s2")
+  private val implementedStages = setOf("s1", "s2", "s3d")
   private val kindRunners = mapOf(
     "record" to setOf("swift-reference", "web-canvas", "web-dom", "android"),
     "web-painter" to setOf("web-canvas", "web-dom"),
@@ -122,10 +122,6 @@ internal object WebSurfaceConformanceLoader {
     require(entries.map { it.scenario }.toSet().size == entries.size) {
       "manifest scenarios must be unique"
     }
-    require(entries.none { it.requiresStage == "s3d" }) {
-      "S5 must not contain an s3d fixture"
-    }
-
     val declaredFiles = entries.mapTo(linkedSetOf()) { it.file }
     val localFiles = resourceCensus()
     require(localFiles == declaredFiles) {

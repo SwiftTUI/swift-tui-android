@@ -33,6 +33,12 @@ class SwiftTUIWebSurfaceSession {
   )
 
   private var baselineRows: List<List<CellTuple>>? = null
+  /**
+   * The retained style table. Held across records because a delta may carry
+   * only the styles it added, keyed by `stylesBase` — the negotiated
+   * `styleAppend` shape.
+   */
+  private var baselineStyles: List<SwiftTUITextStyle?> = emptyList()
   private var baselineWidth = 0
   private var baselineHeight = 0
   private var lastEpoch: Long? = null
@@ -44,6 +50,7 @@ class SwiftTUIWebSurfaceSession {
 
   fun reset() {
     baselineRows = null
+    baselineStyles = emptyList()
     baselineWidth = 0
     baselineHeight = 0
     lastEpoch = null
@@ -81,13 +88,15 @@ class SwiftTUIWebSurfaceSession {
   private fun decodeFull(record: JSONObject): SwiftTUIFrame {
     val stamp = record.fullFrameStamp()
     val rows = parseRowTuples(record.optJSONArray("rows"))
+    val styles = parseStyleTable(record.optJSONArray("styles"))
     baselineRows = rows
+    baselineStyles = styles
     baselineWidth = record.optInt("width")
     baselineHeight = record.optInt("height")
     lastEpoch = stamp.epoch
     lastGeneration = stamp.generation
     pendingResyncScope = null
-    return buildFrame(record, rows)
+    return buildFrame(record, rows, styles)
   }
 
   private fun decodeDelta(record: JSONObject): SwiftTUIFrame? {
@@ -113,6 +122,20 @@ class SwiftTUIWebSurfaceSession {
       return refuseDelta(shouldRequestKeyframe = true)
     }
 
+    // The negotiated append shape: `stylesBase` names where this record's
+    // styles splice onto the retained table. A base that does not match is a
+    // structural break, not a recoverable one — splicing at the wrong offset
+    // would silently repaint cells in the wrong style.
+    val stylesBase = record.optionalIntWeb("stylesBase")
+    val styles = if (stylesBase == null) {
+      parseStyleTable(record.optJSONArray("styles"))
+    } else {
+      if (stylesBase != baselineStyles.size) {
+        return refuseDelta(shouldRequestKeyframe = true)
+      }
+      baselineStyles + parseStyleTable(record.optJSONArray("styles"))
+    }
+
     val rows = baseline.toMutableList()
     val deltaRows = record.optJSONArray("deltaRows") ?: JSONArray()
     for (index in 0 until deltaRows.length()) {
@@ -124,9 +147,10 @@ class SwiftTUIWebSurfaceSession {
       rows[row] = parseCellTuples(row, entry.optJSONArray(1))
     }
     baselineRows = rows
+    baselineStyles = styles
     lastEpoch = stamp.epoch
     lastGeneration = stamp.generation
-    return buildFrame(record, rows)
+    return buildFrame(record, rows, styles)
   }
 
   private fun refuseDelta(shouldRequestKeyframe: Boolean): SwiftTUIFrame? {
@@ -158,8 +182,11 @@ class SwiftTUIWebSurfaceSession {
     }
   }
 
-  private fun buildFrame(record: JSONObject, rowTuples: List<List<CellTuple>>): SwiftTUIFrame {
-    val styles = parseStyleTable(record.optJSONArray("styles"))
+  private fun buildFrame(
+    record: JSONObject,
+    rowTuples: List<List<CellTuple>>,
+    styles: List<SwiftTUITextStyle?>
+  ): SwiftTUIFrame {
     val linkTargets = record.optJSONArray("linkTargets").strings()
     val linkRuns = record.optJSONArray("links")
 
