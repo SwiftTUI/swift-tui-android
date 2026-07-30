@@ -248,14 +248,41 @@ class SwiftTUIFramePollerTest {
     )
   }
 
+  @Test
+  fun aRecordThatGrewBetweenSizeAndCopyIsRetriedRatherThanDropped() {
+    // Version skew only: a pre-delivery-coupled native host re-encodes a newer
+    // frame at copy time, so the first copy reports a size larger than the
+    // buffer the size query sized. The poll must recover in the same tick.
+    val native = FakeFrameNative()
+    val grown = fullRecord(sequence = 1, epoch = 88, generation = 1, text = "A")
+    native.enqueue(grown)
+    native.reportSizeSmallerBy(1)
+
+    val frame = native.makePoller().poll(6)
+    assertTrue(frame is SwiftTUIFramePollResult.Frame)
+    assertEquals(
+      "A",
+      (frame as SwiftTUIFramePollResult.Frame).value.cells.single().character
+    )
+    assertEquals(2, native.copyAttempts)
+  }
+
   private class FakeFrameNative(
     private val resyncResult: Int = 1
   ) {
     private val records = ArrayDeque<ByteArray>()
     val resyncRequests = mutableListOf<String>()
+    var copyAttempts = 0
+      private set
+    private var sizeUnderreportBy = 0
 
     fun enqueue(record: String) {
       records.addLast(record.encodeToByteArray())
+    }
+
+    /** Makes the size query under-report, as a grown copy-time re-encode does. */
+    fun reportSizeSmallerBy(bytes: Int) {
+      sizeUnderreportBy = bytes
     }
 
     fun makePoller(): SwiftTUIFramePoller =
@@ -272,8 +299,9 @@ class SwiftTUIFramePollerTest {
     ): Int {
       val record = records.firstOrNull() ?: return 0
       if (destination == null || capacity <= 0) {
-        return record.size
+        return record.size - sizeUnderreportBy
       }
+      copyAttempts += 1
       if (capacity < record.size) {
         return record.size
       }

@@ -61,8 +61,18 @@ internal class SwiftTUIFramePoller(
       return SwiftTUIFramePollResult.None
     }
 
-    val bytes = ByteArray(needed)
-    val copied = copyLatestFrame(handle, bytes, bytes.size)
+    var bytes = ByteArray(needed)
+    var copied = copyLatestFrame(handle, bytes, bytes.size)
+    if (copied > bytes.size) {
+      // The record grew between the size query and the copy, so no bytes were
+      // written. A delivery-coupled host never does this — its copy leg serves
+      // exactly the bytes the size query measured — but an older native host
+      // re-encodes a newer frame at copy time. Retry once at the larger
+      // reported size instead of dropping the whole poll; correctness comes
+      // from the host's candidate commit, this is only latency.
+      bytes = ByteArray(copied)
+      copied = copyLatestFrame(handle, bytes, bytes.size)
+    }
     if (copied <= 0 || copied > bytes.size) {
       dispatchPendingResync(handle)
       return SwiftTUIFramePollResult.None
