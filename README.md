@@ -8,10 +8,9 @@
 ![License](https://img.shields.io/badge/license-MIT-3DA639)
 
 `swift-tui-android` is the Android host for [SwiftTUI](https://swifttui.sh). The
-Gradle plugin cross-builds your Swift-authored view tree to a native `.so`; the
-`SwiftTUIHostView` composable renders it. The same `View` tree you ship as a
-terminal executable, a static WASI bundle, a localhost WebHost, or a native
-SwiftUI surface runs here too — unchanged.
+Gradle plugin cross-builds your Swift-authored view tree to a native `.so`.
+The `SwiftTUIHostView` composable renders it. The same `View` tree can run in a
+terminal, a WASI bundle, a local WebHost, a native SwiftUI surface, or Android.
 
 **See it on a device:** the
 [`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
@@ -73,7 +72,7 @@ dependencies { implementation("sh.swifttui:android-host:0.4.6") }
 swiftTuiAndroidHost { productName = "MyAppHost" }  // your SwiftPM product
 ```
 
-Then you write exactly two app-side pieces.
+Add two parts to the app.
 
 **1. A one-screen Swift entry** (a SwiftPM product named to match `productName`)
 that wraps your root `View` and exposes the fixed create symbol:
@@ -105,16 +104,18 @@ public func swift_tui_android_create_host() -> Int64 {
 setContent { SwiftTUIHostView(state = rememberSwiftTUIHostState()) }
 ```
 
-On build, the plugin cross-compiles `MyAppHost` for `arm64-v8a`, renames it to
-the canonical `libswift_tui_app_host.so`, and merges it plus the Swift runtime
-into your APK's `jniLibs`.
+During the build, the plugin cross-compiles `MyAppHost` for `arm64-v8a`. It
+renames the result to `libswift_tui_app_host.so`. Then it adds the library and
+the Swift runtime to the APK `jniLibs`.
 
 ## Requirements
 
-- Android SDK + NDK `27.3.13750724` (for the JNI shim); `minSdk 28`.
-- Swift 6.3.x + the Swift Android SDK — consumers only, to cross-build the host `.so`.
-- Toolchains are not vendored; install per the
-  [SwiftTUI docs](https://swifttui.sh).
+- Install the Android SDK and NDK `27.3.13750724` for the JNI shim. Use
+  `minSdk 28`.
+- Install Swift 6.3.x and the Swift Android SDK to cross-compile the host `.so`.
+- Install the toolchains as described in the
+  [SwiftTUI documentation](https://swifttui.sh). The repository does not vendor
+  these toolchains.
 
 ## Building locally
 
@@ -124,9 +125,10 @@ into your APK's `jniLibs`.
 ./gradlew publishToMavenLocal                 # AAR + plugin into ~/.m2
 ```
 
-The full host build (Swift cross-compile + emulator) lives in the
+The full host build includes the Swift cross-compile and the emulator. It lives
+in the
 [`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
-example, which consumes these artifacts.
+example. That example consumes these artifacts.
 
 ## Documentation & support
 
