@@ -119,20 +119,19 @@ the Swift runtime to the APK `jniLibs`.
 
 ## Building locally
 
-```bash
-./gradlew :swift-tui-host:testDebugUnitTest   # JVM unit tests (NDK-free)
-./gradlew :swift-tui-host:assembleRelease     # the AAR
-./gradlew publishToMavenLocal                 # AAR + plugin into ~/.m2
-```
-
-The full host build includes the Swift cross-compile and the emulator. It lives
-in the
+Maintainer build/test commands live in
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), and repository conventions in
+[AGENTS.md](AGENTS.md). The full host build — Swift cross-compile plus the
+emulator — lives in the
 [`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
-example. That example consumes these artifacts.
+example, which consumes these artifacts.
 
 ## Documentation & support
 
-- **Project site & live API reference:** <https://swifttui.sh/docs/documentation/>
+- **Project site & framework API reference:** <https://swifttui.sh/docs/documentation/>
+  — the `SwiftTUIAndroidHost` SwiftPM product's reference is published there
+  with the framework DocC. This README is the reference for the Kotlin/Gradle
+  side (`SwiftTUIHostView`, the `swiftTuiAndroidHost { }` extension).
 - **The framework:** [`SwiftTUI/swift-tui`](https://github.com/SwiftTUI/swift-tui)
   — the authoring API, products, and platform matrix.
 - **Other hosts:** [`swift-tui-swiftui`](https://github.com/SwiftTUI/swift-tui-swiftui)
