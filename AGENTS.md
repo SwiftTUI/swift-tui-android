@@ -18,7 +18,7 @@ The Swift half is the `SwiftTUIAndroidHost` SwiftPM product in
 ./gradlew :swift-tui-host:testDebugUnitTest   # JVM unit tests (NDK-free)
 ./gradlew :swift-tui-host:assembleRelease     # the AAR
 ./gradlew publishToMavenLocal                 # AAR + plugin into ~/.m2
-tools/bazel/native_gate.sh                    # the repo gate CI runs
+Scripts/native_gate.sh                    # the repo gate CI runs
 ```
 
 ## Rules

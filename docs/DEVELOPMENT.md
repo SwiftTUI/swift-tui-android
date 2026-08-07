@@ -12,7 +12,7 @@ repository does not vendor these toolchains.
 ./gradlew :swift-tui-host:testDebugUnitTest   # JVM unit tests (NDK-free)
 ./gradlew :swift-tui-host:assembleRelease     # the AAR
 ./gradlew publishToMavenLocal                 # AAR + plugin into ~/.m2
-tools/bazel/native_gate.sh                    # the repo gate CI runs
+Scripts/native_gate.sh                    # the repo gate CI runs
 ```
 
 The full host build — Swift cross-compile plus emulator — lives in the

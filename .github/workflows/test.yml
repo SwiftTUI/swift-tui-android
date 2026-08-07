@@ -2,7 +2,7 @@ name: Test
 
 # Remote verification of this repo's public contract: the host library and the
 # Gradle plugin build from a fresh clone with a JDK + Android SDK only. Runs
-# the same command as the org root's @swift_tui_android//:native_gate (host
+# the same command as the org root's //:swift_tui_android_native_gate (host
 # JVM unit tests + plugin validation) — NDK-free and no Swift toolchain; the
 # Swift cross-build + emulator smoke remain a manual lane (blocked on the
 # bundled-NDK-sysroot include-path issue, see swift-tui-org proposal
@@ -45,4 +45,4 @@ jobs:
       # honors it and hard-fails (never skips) when the SDK is missing.
       - name: Run native gate
         shell: bash
-        run: tools/bazel/native_gate.sh
+        run: Scripts/native_gate.sh

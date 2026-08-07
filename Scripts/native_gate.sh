@@ -14,7 +14,7 @@ else
 fi
 repo_root="$(git -C "$(dirname "$script_path")" rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$repo_root" ]]; then
-  repo_root="$(cd "$(dirname "$script_path")/../.." && pwd)"
+  repo_root="$(cd "$(dirname "$script_path")/.." && pwd)"
 fi
 cd "$repo_root"
 
