@@ -15,7 +15,7 @@ repository does not vendor these toolchains.
 Scripts/native_gate.sh                    # the repo gate CI runs
 ```
 
-The full host build — Swift cross-compile plus emulator — lives in the
+The full host build (Swift cross-compile plus emulator) lives in the
 `swift-tui-examples/AndroidGallery` example, which consumes these artifacts.
 
 ## Releases

@@ -1,6 +1,6 @@
 # SwiftTUI for Android
 
-**Mount your SwiftTUI app inside a Jetpack Compose UI — the same `App`, `@State`, and `@FocusState` you run in a terminal, now a native Compose view.**
+**Mount your SwiftTUI app inside a Jetpack Compose UI: the same `App`, `@State`, and `@FocusState` you run in a terminal, now a native Compose view.**
 
 ![Swift 6.3](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Android%20(minSdk%2028)-3DDC84?logo=android&logoColor=white)
@@ -22,16 +22,16 @@ example consumes these exact artifacts and runs on an emulator or phone.
 ## Why use it
 
 - **One codebase, every surface.** Author your UI once against SwiftTUI and host
-  it on Android next to the terminal, WASI, WebHost, and Apple-platform hosts —
+  it on Android next to the terminal, WASI, WebHost, and Apple-platform hosts,
   so a new platform costs you a host module, not a rewrite.
-- **Drop-in Compose.** `SwiftTUIHostView` is an ordinary composable — mount it
+- **Drop-in Compose.** `SwiftTUIHostView` is an ordinary composable. Mount it
   with one `setContent { … }` call, with no `AndroidView` interop glue to write.
 - **The build is handled for you.** The Gradle plugin cross-compiles your Swift
   host product for `arm64-v8a`, renames the output canonically, and merges it
-  plus the Swift runtime into your APK's `jniLibs` — you write two small files,
+  plus the Swift runtime into your APK's `jniLibs`. You write two small files;
   the plugin does the toolchain plumbing.
 - **Lean APK.** The host AAR is a Compose view plus a JNI shim and does **not**
-  bundle the Swift runtime — the plugin supplies that from your Swift Android
+  bundle the Swift runtime; the plugin supplies that from your Swift Android
   SDK, so your APK ships exactly one copy.
 
 ## What this repo publishes
@@ -121,19 +121,19 @@ the Swift runtime to the APK `jniLibs`.
 
 Maintainer build/test commands live in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), and repository conventions in
-[AGENTS.md](AGENTS.md). The full host build — Swift cross-compile plus the
-emulator — lives in the
+[AGENTS.md](AGENTS.md). The full host build (Swift cross-compile plus the
+emulator) lives in the
 [`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
 example, which consumes these artifacts.
 
 ## Documentation & support
 
-- **Project site & framework API reference:** <https://swifttui.sh/docs/documentation/>
-  — the `SwiftTUIAndroidHost` SwiftPM product's reference is published there
+- **Project site & framework API reference:** <https://swifttui.sh/docs/documentation/>.
+  The `SwiftTUIAndroidHost` SwiftPM product's reference is published there
   with the framework DocC. This README is the reference for the Kotlin/Gradle
   side (`SwiftTUIHostView`, the `swiftTuiAndroidHost { }` extension).
-- **The framework:** [`SwiftTUI/swift-tui`](https://github.com/SwiftTUI/swift-tui)
-  — the authoring API, products, and platform matrix.
+- **The framework:** [`SwiftTUI/swift-tui`](https://github.com/SwiftTUI/swift-tui),
+  the authoring API, products, and platform matrix.
 - **Other hosts:** [`swift-tui-swiftui`](https://github.com/SwiftTUI/swift-tui-swiftui)
   (native macOS/iOS) and [`swift-tui-web`](https://github.com/SwiftTUI/swift-tui-web)
   (browser).
@@ -141,4 +141,4 @@ example, which consumes these artifacts.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT; see [LICENSE](LICENSE).
