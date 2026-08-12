@@ -6,7 +6,7 @@ plugins {
 // The published AAR and the Gradle plugin share the org's coordinated version.
 allprojects {
   group = "sh.swifttui"
-  version = "0.8.6"
+  version = "0.8.7"
 }
 
 // Both publishable modules serve to the GitHub Pages static Maven repo
