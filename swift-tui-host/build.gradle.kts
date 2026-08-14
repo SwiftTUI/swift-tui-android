@@ -19,7 +19,7 @@ android {
   namespace = "sh.swifttui.android.host"
 
   compileSdk {
-    version = release(36) {
+    version = release(37) {
       minorApiLevel = 1
     }
   }
@@ -70,7 +70,7 @@ android {
 dependencies {
   // `api` for the Compose types that appear in this library's public surface
   // (e.g. `Modifier` on SwiftTUIHostView); `implementation` for the rest.
-  api(platform("androidx.compose:compose-bom:2026.05.01"))
+  api(platform("androidx.compose:compose-bom:2026.08.00"))
   api("androidx.compose.ui:ui")
   implementation("androidx.compose.foundation:foundation")
   implementation("androidx.compose.ui:ui-graphics")
@@ -78,7 +78,7 @@ dependencies {
   testImplementation("junit:junit:4.13.2")
   // The real org.json, shadowing the stubbed android.jar copy so the frame
   // parser can be exercised in plain JVM unit tests.
-  testImplementation("org.json:json:20231013")
+  testImplementation("org.json:json:20260719")
 }
 
 publishing {
