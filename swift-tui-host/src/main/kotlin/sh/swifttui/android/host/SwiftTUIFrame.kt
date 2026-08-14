@@ -108,7 +108,9 @@ data class SwiftTUIImageAttachment(
   val pixelSize: SwiftTUIPixelSize?,
   val cellPixelSize: SwiftTUIPixelSize?,
   val isResizable: Boolean,
-  val scalingMode: String
+  val scalingMode: String,
+  /** Effective image placement alpha. Legacy frames default to fully opaque. */
+  val opacity: Double = 1.0
 )
 
 data class SwiftTUIFocusPresentation(

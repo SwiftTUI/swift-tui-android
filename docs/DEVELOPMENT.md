@@ -18,6 +18,10 @@ Scripts/native_gate.sh                    # the repo gate CI runs
 The full host build (Swift cross-compile plus emulator) lives in the
 `swift-tui-examples/AndroidGallery` example, which consumes these artifacts.
 
+The Kotlin host decodes image opacity from the shared web-surface record and
+applies it through the Compose canvas paint. Bitmap cache keys remain based on
+image content identity; alpha-only frames replay the cached bitmap.
+
 ## Releases
 
 Versions are lockstep with the SwiftTUI org; the coordination root owns the

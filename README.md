@@ -19,6 +19,14 @@ example consumes these exact artifacts and runs on an emulator or phone.
 > Pre-1.0 (0.8.9 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
 
+> Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
+> NDK `27.3.13750724`, Swift 6.3.x, and the Swift Android SDK through the
+> published AAR/Gradle-plugin packaging path. The lower-level host can
+> cross-compile x86_64, but x86_64 packaging and IME marked/pre-edit
+> composition are outside the 0.9 claim. The Compose accessibility overlay is
+> one-way semantic presentation; TalkBack-origin focus and control actions do
+> not route back into SwiftTUI.
+
 ## Why use it
 
 - **One codebase, every surface.** Author your UI once against SwiftTUI and host

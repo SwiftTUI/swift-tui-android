@@ -409,7 +409,8 @@ private fun JSONObject.toWebImageAttachment(): SwiftTUIImageAttachment =
     pixelSize = optJSONArray("pixelSize").toWebPixelSize(),
     cellPixelSize = null,
     isResizable = false,
-    scalingMode = optString("scalingMode", "stretch")
+    scalingMode = optString("scalingMode", "stretch"),
+    opacity = normalizedSwiftTUIImageOpacity(optDouble("opacity", 1.0))
   )
 
 private fun JSONObject.toWebAccessibilityNode(): SwiftTUIAccessibilityNode =

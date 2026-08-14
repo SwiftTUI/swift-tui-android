@@ -251,7 +251,7 @@ class SwiftTUIRenderer internal constructor(
     style: SwiftTUIAndroidStyle
   ) {
     frame.imageAttachments.forEach { attachment ->
-      val cacheKey = bitmapCacheKey(attachment)
+      val cacheKey = swiftTUIImageCacheKey(attachment)
       val bitmap = bitmapFor(attachment) ?: return@forEach
       if (bitmap.isRecycled) {
         bitmapCache.remove(cacheKey)
@@ -268,6 +268,10 @@ class SwiftTUIRenderer internal constructor(
         (bounds.x + bounds.width) * style.cellWidthPx,
         (bounds.y + bounds.height) * style.cellHeightPx
       )
+      // Alpha belongs to the placement, not the decoded image. The bitmap
+      // remains cached under content identity while every replay applies the
+      // current effective opacity.
+      imagePaint.alpha = swiftTUIImageAlpha(attachment.opacity)
       canvas.drawBitmap(bitmap, null, rect, imagePaint)
     }
   }
@@ -325,7 +329,7 @@ class SwiftTUIRenderer internal constructor(
   private fun bitmapFor(
     attachment: SwiftTUIImageAttachment
   ): Bitmap? {
-    val cacheKey = bitmapCacheKey(attachment)
+    val cacheKey = swiftTUIImageCacheKey(attachment)
     return when (val resolution = SwiftTUIBitmapCachePolicy.resolve(
       key = cacheKey,
       cached = { bitmapCache.get(cacheKey) },
@@ -349,10 +353,17 @@ class SwiftTUIRenderer internal constructor(
     }
   }
 
-  private fun bitmapCacheKey(
-    attachment: SwiftTUIImageAttachment
-  ): String = "${attachment.id}:${attachment.payloadByteCount ?: 0}"
 }
+
+internal fun normalizedSwiftTUIImageOpacity(opacity: Double): Double =
+  if (opacity.isFinite()) opacity.coerceIn(0.0, 1.0) else 1.0
+
+internal fun swiftTUIImageAlpha(opacity: Double): Int =
+  (normalizedSwiftTUIImageOpacity(opacity) * 255.0).roundToInt()
+
+internal fun swiftTUIImageCacheKey(
+  attachment: SwiftTUIImageAttachment
+): String = "${attachment.id}:${attachment.payloadByteCount ?: 0}"
 
 fun SwiftTUIColor.toComposeColor(): Color = Color(toArgb())
 

@@ -19,7 +19,8 @@ class SwiftTUIWebSurfaceSessionTest {
       """"rows":[[[0,"a",1,1],[1,"b",1,0],[2,"c",1,0],[3," ",1,0]],""" +
       """[[0,"宽",2,0],[2,"e",1,0],[3," ",1,0]]],""" +
       """"images":[{"id":"png:abc:5","format":"png","bounds":[0,1,1,1],""" +
-      """"visibleBounds":[0,1,1,1],"scalingMode":"fit","pixelSize":[2,3],""" +
+      """"visibleBounds":[0,1,1,1],"scalingMode":"fit","opacity":0.4,""" +
+      """"pixelSize":[2,3],""" +
       """"dataBase64":"aGk="}],""" +
       """"damage":{"textRows":[[1,[[0,2]]]],"requiresFullTextRepaint":false,""" +
       """"requiresFullGraphicsReplay":false},""" +
@@ -71,6 +72,7 @@ class SwiftTUIWebSurfaceSessionTest {
     assertEquals(SwiftTUIRect(0, 1, 1, 1), image.bounds)
     assertEquals(SwiftTUIPixelSize(2, 3), image.pixelSize)
     assertEquals("fit", image.scalingMode)
+    assertEquals(0.4, image.opacity, 0.0)
 
     val node = frame.accessibilityNodes.single()
     assertEquals("root/field", node.id)
@@ -157,6 +159,7 @@ class SwiftTUIWebSurfaceSessionTest {
     assertNull(frame.accessibilityNodes.single().liveRegion)
     assertEquals("polite", frame.accessibilityAnnouncements.single().politeness)
     assertEquals("stretch", frame.imageAttachments.single().scalingMode)
+    assertEquals(1.0, frame.imageAttachments.single().opacity, 0.0)
   }
 
   @Test
@@ -205,6 +208,29 @@ class SwiftTUIWebSurfaceSessionTest {
     val next = requireNotNull(session.decode(second))
     assertEquals("Z", next.cellAt(1, 1)?.character)
     assertEquals("X", next.cellAt(1, 2)?.character)
+  }
+
+  @Test
+  fun deltaImageOpacityUpdatesWithoutRepeatingPayloadBytes() {
+    val session = SwiftTUIWebSurfaceSession()
+    val full = prefix +
+      """{"version":2,"sequence":1,"width":1,"height":1,"styles":[null],""" +
+      """"rows":[[[0," ",1,0]]],"images":[{"id":"png:same","format":"png",""" +
+      """"bounds":[0,0,1,1],"visibleBounds":[0,0,1,1],""" +
+      """"scalingMode":"stretch","opacity":0.2,"dataBase64":"eA=="}]}""" + "\n"
+    requireNotNull(session.decode(full))
+
+    val delta = prefix +
+      """{"version":3,"encoding":"delta","sequence":2,"width":1,"height":1,""" +
+      """"styles":[null],"deltaRows":[],"images":[{"id":"png:same","format":"png",""" +
+      """"bounds":[0,0,1,1],"visibleBounds":[0,0,1,1],""" +
+      """"scalingMode":"stretch","opacity":0.8}],"damage":{"textRows":[],""" +
+      """"requiresFullTextRepaint":false,"requiresFullGraphicsReplay":true}}""" + "\n"
+    val updated = requireNotNull(session.decode(delta))
+
+    val image = updated.imageAttachments.single()
+    assertEquals(0.8, image.opacity, 0.0)
+    assertNull(image.payloadBase64)
   }
 
   @Test
