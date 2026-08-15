@@ -4,7 +4,7 @@
 
 ![Swift 6.3](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Android%20(minSdk%2028)-3DDC84?logo=android&logoColor=white)
-![Status](https://img.shields.io/badge/status-0.8.10%20pre--release-DAA520)
+![Status](https://img.shields.io/badge/status-0.8.11%20pre--release-DAA520)
 ![License](https://img.shields.io/badge/license-MIT-3DA639)
 
 `swift-tui-android` is the Android host for [SwiftTUI](https://swifttui.sh). The
@@ -16,7 +16,7 @@ terminal, a WASI bundle, a local WebHost, a native SwiftUI surface, or Android.
 [`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
 example consumes these exact artifacts and runs on an emulator or phone.
 
-> Pre-1.0 (0.8.10 beta). Published via GitHub Pages until the Gradle
+> Pre-1.0 (0.8.11 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
 
 > Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
@@ -75,8 +75,8 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts:
-plugins { id("sh.swifttui.android") version "0.8.10" }
-dependencies { implementation("sh.swifttui:android-host:0.8.10") }
+plugins { id("sh.swifttui.android") version "0.8.11" }
+dependencies { implementation("sh.swifttui:android-host:0.8.11") }
 swiftTuiAndroidHost { productName = "MyAppHost" }  // your SwiftPM product
 ```
 
