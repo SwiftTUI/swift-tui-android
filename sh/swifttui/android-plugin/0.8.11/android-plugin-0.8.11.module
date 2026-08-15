@@ -1,0 +1,64 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "sh.swifttui",
+    "module": "android-plugin",
+    "version": "0.8.11",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.8.11.jar",
+          "url": "android-plugin-0.8.11.jar",
+          "size": 47270,
+          "sha512": "4012c15a32030392bba291cc466321bb0997646ecd8ca686faca771af4401c50334955077788fffeeea116922f869e7b4f07200f3d7bf7a30e39e2f30988b02c",
+          "sha256": "f7c5e9eedec6b41400fb93ed98afa9edb0cebc0d537e1bddded20fbe1c1a986b",
+          "sha1": "fa3661945a1ec17e18a64215c2c3c26493fbaaa9",
+          "md5": "dd7b06d3a893b1b48fd66beec52175f3"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.8.11.jar",
+          "url": "android-plugin-0.8.11.jar",
+          "size": 47270,
+          "sha512": "4012c15a32030392bba291cc466321bb0997646ecd8ca686faca771af4401c50334955077788fffeeea116922f869e7b4f07200f3d7bf7a30e39e2f30988b02c",
+          "sha256": "f7c5e9eedec6b41400fb93ed98afa9edb0cebc0d537e1bddded20fbe1c1a986b",
+          "sha1": "fa3661945a1ec17e18a64215c2c3c26493fbaaa9",
+          "md5": "dd7b06d3a893b1b48fd66beec52175f3"
+        }
+      ]
+    }
+  ]
+}
