@@ -15,8 +15,21 @@ repository does not vendor these toolchains.
 Scripts/native_gate.sh                    # the repo gate CI runs
 ```
 
-The full host build (Swift cross-compile plus emulator) lives in the
-`swift-tui-examples/AndroidGallery` example, which consumes these artifacts.
+Those targets cover the Kotlin half only: this repository never cross-compiles
+Swift, so a green `native_gate.sh` says nothing about the Swift toolchain.
+Exercise the full path — Swift cross-compile, `jniLibs` staging, APK packaging,
+and an emulator install — through the counter demo's
+[`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample),
+which consumes the published AAR and plugin exactly as a third-party app does:
+
+```bash
+git clone https://github.com/SwiftTUI/swift-tui-counter-demo.git
+cd swift-tui-counter-demo/AndroidExample
+./gradlew :app:installDebug     # arm64-v8a device or emulator
+```
+
+That example is the canonical end-to-end check for a change to the AAR, the
+Gradle plugin, or the Swift `SwiftTUIAndroidHost` product.
 
 The Kotlin host decodes image opacity from the shared web-surface record and
 applies it through the Compose canvas paint. Bitmap cache keys remain based on

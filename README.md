@@ -12,9 +12,12 @@ Gradle plugin cross-builds your Swift-authored view tree to a native `.so`.
 The `SwiftTUIHostView` composable renders it. The same `View` tree can run in a
 terminal, a WASI bundle, a local WebHost, a native SwiftUI surface, or Android.
 
-**See it on a device:** the
-[`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
-example consumes these exact artifacts and runs on an emulator or phone.
+**See it on a device:** the counter demo's
+[`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample)
+consumes these exact artifacts — plugin `0.9.0` and
+`sh.swifttui:android-host:0.9.0` — and runs on an emulator or phone. It hosts
+the same `CounterView` that the terminal, SwiftUI, and browser hosts run, so it
+shows the one-source-many-hosts claim rather than describing it.
 
 > Pre-1.0 (0.9.0 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
@@ -71,6 +74,13 @@ MyApp/
     └── Sources/MyAppHost/MyApp.swift
 ```
 
+The counter demo's
+[`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample)
+is this layout filled in — plus the ordinary Android scaffolding every app has
+(root `build.gradle.kts`, `gradle.properties`, a manifest, the wrapper). Read it
+alongside the four steps below if you would rather start from a working copy
+than from a blank directory.
+
 **1. `settings.gradle.kts`** — register the Pages repo for BOTH the plugin and
 the AAR (until the Plugin Portal / Maven Central graduation). `pluginManagement`
 must come first and is evaluated on its own, so the URL is repeated rather than
@@ -97,9 +107,10 @@ include(":app")
 **2. `app/build.gradle.kts`.** The plugin *stages* the Swift host library and
 runtime into `build/generated/swiftJniLibs`, but packaging them is your app's
 decision — so the `jniLibs` source set and `useLegacyPackaging` below are
-required, not optional. (Omit them and the build still succeeds; the plugin
-fails the build with an explanatory message rather than shipping an APK with no
-Swift inside it.)
+required, not optional. Leave the `jniLibs` source set out and the APK would
+still build, install, and launch — with no Swift inside it, `dlopen` failing to
+logcat and the view staying blank. The plugin's `verifySwiftAndroidJniLibs`
+check fails the build with that explanation instead.
 
 ```kotlin
 plugins {
@@ -115,6 +126,10 @@ android {
   compileSdk {
     version = release(37) { minorApiLevel = 1 }
   }
+
+  // Pin the NDK rather than taking AGP's default: it strips the packaged Swift
+  // `.so` files, and a default your machine has not installed fails the build.
+  ndkVersion = "27.3.13750724"
 
   defaultConfig {
     applicationId = "com.example.myapp"
@@ -260,11 +275,17 @@ swiftTuiAndroidHost {
 ## Building locally
 
 Maintainer build/test commands live in
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), and repository conventions in
-[AGENTS.md](AGENTS.md). The full host build (Swift cross-compile plus the
-emulator) lives in the
-[`AndroidGallery`](https://github.com/SwiftTUI/swift-tui-examples/tree/main/AndroidGallery)
-example, which consumes these artifacts.
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). This repository builds and tests the
+AAR and the plugin; it does not cross-compile Swift. The full host build — Swift
+cross-compile, packaging, and an emulator install — lives in the counter demo's
+[`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample),
+which consumes these artifacts as a published dependency:
+
+```bash
+git clone https://github.com/SwiftTUI/swift-tui-counter-demo.git
+cd swift-tui-counter-demo/AndroidExample
+./gradlew :app:installDebug
+```
 
 ## Documentation & support
 

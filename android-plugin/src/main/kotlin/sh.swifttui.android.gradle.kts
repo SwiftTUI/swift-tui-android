@@ -247,7 +247,7 @@ val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
 }
 
 // Sync (not Copy) so the generated jniLibs dir exactly mirrors the produced set:
-// a renamed product (e.g. libGalleryAndroidHost.so -> libswift_tui_app_host.so)
+// a renamed product (e.g. libCounterAndroidHost.so -> libswift_tui_app_host.so)
 // must not leave the old `.so` orphaned in the merged APK.
 val copySwiftAndroidLibraries = tasks.register<Sync>("copySwiftAndroidLibraries") {
   description = "Syncs the Swift host product (renamed to canonical) and Swift runtime into jniLibs."
