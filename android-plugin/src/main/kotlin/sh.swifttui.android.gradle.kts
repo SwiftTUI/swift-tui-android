@@ -225,7 +225,95 @@ val copySwiftAndroidLibraries = tasks.register<Sync>("copySwiftAndroidLibraries"
   into(generatedJniLibsDir.map { it.dir("arm64-v8a") })
 }
 
+// This plugin stages the host `.so` and the Swift runtime, but *packaging* them
+// stays the app's decision: the plugin takes no AGP dependency, so it cannot add
+// the generated directory to the app's `android {}` jniLibs source set itself.
+//
+// When an app omits that one line the failure is silent and expensive: the APK
+// builds clean, installs, and launches, but `libswift_tui_app_host.so` is absent,
+// so the JNI shim's dlopen() fails and the host shows an empty view. The only
+// trace is a logcat line. Detect the omission at build time instead.
+//
+// Resolved during configuration into a plain Boolean so the task input carries no
+// reference to the AGP extension (configuration-cache safe). Defaults to `true`:
+// introspection failure must never fail a build that would otherwise work.
+val jniLibsWired = objects.property(Boolean::class.java).convention(true)
+
+afterEvaluate {
+  // Read `android.sourceSets.main.jniLibs.directories` reflectively — matching
+  // how this plugin already addresses AGP by name (see the preBuild hook below)
+  // rather than taking a compile-time dependency on it. Any failure here leaves
+  // the check disabled rather than guessing.
+  val declared: Set<String> = runCatching {
+    val android = extensions.findByName("android") ?: return@runCatching emptySet()
+    fun call(target: Any, method: String): Any? =
+      target.javaClass.methods
+        .first { it.name == method && it.parameterCount == 0 }
+        .apply { isAccessible = true }
+        .invoke(target)
+
+    val sourceSets = call(android, "getSourceSets") as NamedDomainObjectContainer<*>
+    val main = sourceSets.getByName("main") as Any
+    val jniLibs = call(main, "getJniLibs") as Any
+    (call(jniLibs, "getDirectories") as Collection<*>).mapNotNull { it?.toString() }.toSet()
+  }.getOrElse { return@afterEvaluate }
+
+  if (declared.isEmpty()) return@afterEvaluate
+
+  // Compare resolved paths, not strings: `directories.add(...)` takes an absolute
+  // path while the deprecated `srcDir(...)` accepts a provider or a relative one.
+  val expected = generatedJniLibsDir.get().asFile.canonicalFile
+  jniLibsWired.set(
+    declared.any { runCatching { file(it).canonicalFile == expected }.getOrDefault(false) }
+  )
+}
+
+val verifySwiftAndroidJniLibs = tasks.register("verifySwiftAndroidJniLibs") {
+  description = "Fails if the app does not package the staged Swift host libraries."
+  group = "verification"
+
+  // Only meaningful when a Swift build actually produced libraries to package.
+  // Without the toolchain nothing is staged, so the app packaging nothing is
+  // correct, not a misconfiguration (mirrors buildSwiftAndroid's onlyIf).
+  val toolingAvailable = swiftAndroidToolingAvailable.get()
+  onlyIf { toolingAvailable }
+
+  // Task-local captures: the doLast body must not reference `hostConfig` or the
+  // enclosing script object (configuration-cache safe, as elsewhere in this file).
+  val wired = jniLibsWired
+  val stagedPath = generatedJniLibsDir.map { it.asFile.path }
+  val canonicalLibrary = hostConfig.hostLibraryName.get()
+
+  doLast {
+    if (wired.get()) return@doLast
+    throw GradleException(
+      """
+      SwiftTUI: this app builds the Swift host library but never packages it.
+
+        staged at: ${stagedPath.get()}
+
+      The APK would build, install, and launch with no Swift host inside it:
+      dlopen(lib$canonicalLibrary.so) fails and the view stays blank, reporting
+      only to logcat.
+
+      Add both blocks to this module's android { } in build.gradle.kts:
+
+        sourceSets["main"].jniLibs.directories.add(
+          layout.buildDirectory.dir("generated/swiftJniLibs").get().asFile.path
+        )
+
+        packaging {
+          jniLibs {
+            // Extract the Swift runtime at install time so dlopen resolves it.
+            useLegacyPackaging = true
+          }
+        }
+      """.trimIndent()
+    )
+  }
+}
+
 // preBuild is created by AGP; wire lazily so apply-order does not matter.
 tasks.matching { it.name == "preBuild" }.configureEach {
-  dependsOn(copySwiftAndroidLibraries)
+  dependsOn(copySwiftAndroidLibraries, verifySwiftAndroidJniLibs)
 }
