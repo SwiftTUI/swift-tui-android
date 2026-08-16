@@ -85,6 +85,84 @@ val swiftAndroidToolingAvailable = providers.provider {
   File(swiftAndroidNdkDir.get()).exists() && File(swiftSdkBundleDir.get()).exists()
 }
 
+// swiftly installs to `~/.swiftly/bin` and depends on a shell profile to put that
+// directory on PATH. An IDE launched from a desktop shell never reads that
+// profile: on macOS a Finder- or Dock-launched Android Studio inherits launchd's
+// PATH (`/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin`), and so does the Gradle
+// daemon it forks. A bare `swiftly` command line therefore dies with
+// `Cannot run program "swiftly" ... error=2` on a machine where swiftly is
+// installed and the identical build succeeds from a terminal — an error that
+// accuses the one component the user can plainly see is present.
+//
+// Resolve an absolute path up front instead, and when none is found, say why.
+// `providers.environmentVariable` rather than `System.getenv` so PATH and
+// SWIFTLY_BIN_DIR are declared configuration-cache inputs: moving swiftly must
+// re-resolve rather than replay a stale absolute path out of the cache.
+val swiftlySearchDirs: List<String> = buildList {
+  // An explicit install dir wins over the default, which wins over PATH: a
+  // consumer who deliberately moved swiftly should not be overruled by whatever
+  // a stale PATH entry happens to name first.
+  providers.environmentVariable("SWIFTLY_BIN_DIR").orNull?.let(::add)
+  add("$userHome/.swiftly/bin")
+  providers.environmentVariable("PATH").orNull
+    ?.split(File.pathSeparator)
+    ?.let(::addAll)
+}.filter { it.isNotBlank() }
+
+val discoveredSwiftly: File? = swiftlySearchDirs
+  .asSequence()
+  .map { File(it, "swiftly") }
+  .firstOrNull { it.isFile && it.canExecute() }
+
+fun swiftlyUnavailableMessage(reason: String): String =
+  """
+  SwiftTUI: $reason
+
+  swiftly installs to ~/.swiftly/bin, which a shell profile puts on PATH. An IDE
+  launched from the desktop (Finder, the Dock, a launcher) does not read that
+  profile and hands its own reduced PATH to Gradle. That is why this can fail
+  while the same build succeeds from a terminal.
+
+  Any one of these fixes it:
+    - Relaunch the IDE from a terminal so it inherits your shell's PATH.
+    - Name swiftly in this module's build.gradle.kts:
+        swiftTuiAndroidHost { swiftlyExecutable = file("<path>/swiftly") }
+    - Export SWIFTLY_BIN_DIR in the environment Gradle runs in.
+  """.trimIndent()
+
+// Sets the receiver's command line to `<swiftly> run swift <args>`, using an
+// absolute launcher path so PATH is never consulted at execution time.
+fun Exec.swiftlyRun(vararg args: String) {
+  // An explicit `swiftlyExecutable` is never silently discarded in favour of a
+  // discovered one: a consumer who named a path and got a build against some
+  // other toolchain would have no way to tell. Report the bad path instead.
+  val explicit = hostConfig.swiftlyExecutable.orNull?.asFile
+  val launcher = (explicit ?: discoveredSwiftly)?.takeIf { it.isFile && it.canExecute() }
+
+  if (launcher != null) {
+    commandLine(listOf(launcher.absolutePath, "run", "swift") + args)
+    return
+  }
+
+  val reason = when (explicit) {
+    null ->
+      "could not find the `swiftly` Swift toolchain launcher.\n\n" +
+        "    searched: ${swiftlySearchDirs.joinToString(", ")}"
+    else -> "swiftlyExecutable names $explicit, which is not an executable file."
+  }
+
+  // Exec demands a command line at configuration time even for a task that will
+  // not run one, and a doFirst that throws pre-empts the exec. Reporting here
+  // rather than letting the process launch fail replaces an opaque
+  // `Cannot run program "swiftly"` with something that names the cause. The
+  // message is captured as a task-local String so the stored action holds no
+  // reference to the enclosing script object (configuration-cache safe, as
+  // elsewhere in this file).
+  val message = swiftlyUnavailableMessage(reason)
+  commandLine("true")
+  doFirst { throw GradleException(message) }
+}
+
 fun swiftPackageMirrorUrl(checkout: File): String {
   val dotGit = checkout.resolve(".git")
   if (!dotGit.isFile) {
@@ -169,10 +247,7 @@ val configureSwiftPackageMirrors = tasks.register<Exec>("configureSwiftPackageMi
   if (checkout == null) {
     commandLine("true")
   } else {
-    commandLine(
-      "swiftly",
-      "run",
-      "swift",
+    swiftlyRun(
       "package",
       "--package-path",
       packageDir.absolutePath,
@@ -229,10 +304,7 @@ val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
 
   environment("DISABLE_EXPLICIT_PLATFORMS", "1")
   environment("ANDROID_NDK_HOME", swiftAndroidNdkDir.get())
-  commandLine(
-    "swiftly",
-    "run",
-    "swift",
+  swiftlyRun(
     "build",
     swiftToolchainVersion,
     "--package-path",

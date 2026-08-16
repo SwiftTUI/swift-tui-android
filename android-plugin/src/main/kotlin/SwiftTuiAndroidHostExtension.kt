@@ -1,5 +1,6 @@
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 
 /**
@@ -35,4 +36,16 @@ interface SwiftTuiAndroidHostExtension {
 
   /** Extra Swift source roots to track for incremental rebuilds (e.g. sibling view packages). */
   val additionalSwiftSources: ConfigurableFileCollection
+
+  /**
+   * The `swiftly` launcher used to select the Swift toolchain. Unset by default:
+   * the plugin discovers it from `SWIFTLY_BIN_DIR`, then `~/.swiftly/bin`, then
+   * `PATH`.
+   *
+   * Set this only when swiftly lives somewhere none of those find it. It is a
+   * checked-in override, so it also works under a GUI-launched Android Studio,
+   * which cannot see a shell profile's `PATH` (see the discovery comment in the
+   * plugin script).
+   */
+  val swiftlyExecutable: RegularFileProperty
 }
