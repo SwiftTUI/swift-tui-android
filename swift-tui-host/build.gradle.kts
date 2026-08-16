@@ -101,7 +101,7 @@ publishing {
         }
         developers {
           developer {
-            name = "GoodHats LLC"
+            name = "OPTIONAL.DEV"
             url = "https://swifttui.sh"
           }
         }
