@@ -9,7 +9,24 @@ import java.nio.file.Files
 val hostConfig = extensions.create("swiftTuiAndroidHost", SwiftTuiAndroidHostExtension::class.java)
 hostConfig.hostLibraryName.convention("swift_tui_app_host")
 hostConfig.packageDirectory.convention(layout.projectDirectory.dir("../SwiftPackage"))
-hostConfig.swiftTuiCheckout.convention(layout.projectDirectory.dir("../../../swift-tui"))
+
+// Coordination-only, and deliberately opt-in: unset is the normal case, and the
+// mirror step is then skipped entirely.
+//
+// This previously defaulted to `../../../swift-tui`, which made a dependency
+// substitution conditional on a relative path *outside* the consumer's project.
+// That path resolves to a sibling of the app's own repository, so a consumer who
+// happened to have a swift-tui clone there would silently build against it
+// instead of the tagged version their Package.swift declares — the same class of
+// silent-wrong-output failure the jniLibs check below exists to prevent.
+//
+// The SwiftTUI org root supplies SWIFTTUI_LOCAL_CHECKOUT when integrating against
+// an untagged sibling checkout. Keeping it in the environment rather than in the
+// example apps' build files also keeps pre-tag overrides out of the public child
+// repositories, where they are not permitted.
+hostConfig.swiftTuiCheckout.convention(
+  layout.dir(providers.environmentVariable("SWIFTTUI_LOCAL_CHECKOUT").map { File(it) })
+)
 
 val swiftSdkName = "aarch64-unknown-linux-android28"
 val swiftToolchainVersion = "+6.3.3"
@@ -20,13 +37,24 @@ val generatedJniLibsDir = layout.buildDirectory.dir("generated/swiftJniLibs")
 val generatedSwiftSdksDir = layout.buildDirectory.dir("swift-sdks")
 
 val userHome = providers.systemProperty("user.home").get()
-val defaultSwiftSdkBundleDir =
-  "$userHome/Library/org.swift.swiftpm/swift-sdks/$swiftSdkArtifactName.artifactbundle"
+
+// SwiftPM's per-user data directory, where `swift sdk install` unpacks bundles.
+// Apple platforms use the Library convention; everywhere else SwiftPM uses a
+// dotfile directory. Resolved here rather than hardcoded so a Linux host gets a
+// usable default instead of a macOS path that cannot exist (`ndkHostTag` below
+// already treats linux and windows as supported build hosts).
+val swiftSdksDir = when {
+  providers.systemProperty("os.name").get().lowercase().contains("mac") ->
+    "$userHome/Library/org.swift.swiftpm/swift-sdks"
+  else -> "$userHome/.swiftpm/swift-sdks"
+}
+
+val defaultSwiftSdkBundleDir = "$swiftSdksDir/$swiftSdkArtifactName.artifactbundle"
 val swiftSdkBundleDir = providers.environmentVariable("SWIFT_ANDROID_SDK_BUNDLE")
   .orElse(defaultSwiftSdkBundleDir)
 val defaultSwiftAndroidRoot = swiftSdkBundleDir.map { "$it/swift-android" }
 val defaultAndroidNdkDir =
-  "$userHome/Library/org.swift.swiftpm/swift-sdks/swift-6.3-RELEASE_android.artifactbundle/swift-android/android-ndk-r27d"
+  "$swiftSdksDir/swift-6.3-RELEASE_android.artifactbundle/swift-android/android-ndk-r27d"
 val swiftAndroidRoot = providers.environmentVariable("SWIFT_ANDROID_ROOT")
   .orElse(defaultSwiftAndroidRoot)
 val swiftAndroidNdkDir = providers.environmentVariable("ANDROID_NDK_HOME")
@@ -86,7 +114,15 @@ val prepareSwiftSdkSearchPath = tasks.register("prepareSwiftSdkSearchPath") {
   val sdksDir = generatedSwiftSdksDir
   val bundleDir = swiftSdkBundleDir.map { File(it) }
 
-  inputs.dir(bundleDir)
+  // Same skip-don't-fail contract as buildSwiftAndroid: an absent Swift Android
+  // SDK must leave the APK without the host library, not break the build. onlyIf
+  // alone is not enough — Gradle validates declared inputs before consulting it,
+  // so a missing bundle would fail with an opaque "Property '$1' … doesn't exist"
+  // before this task ever gets the chance to skip.
+  val toolingAvailable = swiftAndroidToolingAvailable.get()
+  onlyIf { toolingAvailable }
+
+  inputs.dir(bundleDir).optional(true)
   outputs.dir(sdksDir)
 
   doLast {
@@ -110,31 +146,44 @@ val configureSwiftPackageMirrors = tasks.register<Exec>("configureSwiftPackageMi
   group = "build"
 
   val packageDir = hostConfig.packageDirectory.get().asFile
-  val checkout = hostConfig.swiftTuiCheckout.get().asFile
+  // Unset is the ordinary case: no mirror, no message. Only report when a
+  // checkout was explicitly requested but is not there, which is a real mistake.
+  val checkout = hostConfig.swiftTuiCheckout.orNull?.asFile
 
   onlyIf {
-    if (!checkout.isDirectory) {
-      logger.lifecycle("No local SwiftTUI checkout found at $checkout; using public dependency.")
-      false
-    } else {
-      true
+    when {
+      checkout == null -> false
+      !checkout.isDirectory -> {
+        logger.lifecycle(
+          "SwiftTUI: requested local checkout $checkout is not a directory; " +
+            "using the tagged dependency instead."
+        )
+        false
+      }
+      else -> true
     }
   }
 
-  commandLine(
-    "swiftly",
-    "run",
-    "swift",
-    "package",
-    "--package-path",
-    packageDir.absolutePath,
-    "config",
-    "set-mirror",
-    "--original",
-    swiftTuiDependencyUrl,
-    "--mirror",
-    swiftPackageMirrorUrl(checkout)
-  )
+  // Exec demands a command line at configuration time even when onlyIf will skip
+  // the task, so stand in a no-op when no checkout was requested.
+  if (checkout == null) {
+    commandLine("true")
+  } else {
+    commandLine(
+      "swiftly",
+      "run",
+      "swift",
+      "package",
+      "--package-path",
+      packageDir.absolutePath,
+      "config",
+      "set-mirror",
+      "--original",
+      swiftTuiDependencyUrl,
+      "--mirror",
+      swiftPackageMirrorUrl(checkout)
+    )
+  }
 }
 
 val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
@@ -166,12 +215,16 @@ val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
     include("Sources/**/*.swift")
   })
   inputs.files(hostConfig.additionalSwiftSources)
-  inputs.files(fileTree(hostConfig.swiftTuiCheckout.get()) {
-    include("Package.swift")
-    include("Sources/**/*.swift")
-    include("Platforms/Android/**/*.swift")
-    include("Vendor/swift-figlet/**/*.swift")
-  })
+  // Only when a local checkout is mirrored in: without one the framework arrives
+  // as a resolved tagged dependency, whose sources are not an input to track.
+  hostConfig.swiftTuiCheckout.orNull?.let { localCheckout ->
+    inputs.files(fileTree(localCheckout) {
+      include("Package.swift")
+      include("Sources/**/*.swift")
+      include("Platforms/Android/**/*.swift")
+      include("Vendor/swift-figlet/**/*.swift")
+    })
+  }
   outputs.file(File(packageDir, "$swiftBuildSubpath/lib$product.so"))
 
   environment("DISABLE_EXPLICIT_PLATFORMS", "1")

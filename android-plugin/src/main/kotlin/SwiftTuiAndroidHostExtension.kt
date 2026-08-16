@@ -24,7 +24,13 @@ interface SwiftTuiAndroidHostExtension {
   /** The SwiftPM package directory to build. Defaults to `../SwiftPackage`. */
   val packageDirectory: DirectoryProperty
 
-  /** Local swift-tui checkout used to mirror the public dependency during dev. */
+  /**
+   * Local swift-tui checkout to mirror the tagged dependency onto, for
+   * pre-release integration. Unset by default, and unset is the normal case:
+   * consumers resolve swift-tui from the tagged HTTPS dependency their own
+   * `Package.swift` declares. Defaults to `SWIFTTUI_LOCAL_CHECKOUT` when that
+   * environment variable is set.
+   */
   val swiftTuiCheckout: DirectoryProperty
 
   /** Extra Swift source roots to track for incremental rebuilds (e.g. sibling view packages). */
