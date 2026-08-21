@@ -4,7 +4,7 @@
 
 ![Swift 6.3](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Android%20(minSdk%2028)-3DDC84?logo=android&logoColor=white)
-![Status](https://img.shields.io/badge/status-0.9.4%20pre--release-DAA520)
+![Status](https://img.shields.io/badge/status-0.9.5%20pre--release-DAA520)
 ![License](https://img.shields.io/badge/license-MIT-3DA639)
 
 `swift-tui-android` is the Android host for [SwiftTUI](https://swifttui.sh). The
@@ -14,12 +14,12 @@ terminal, a WASI bundle, a local WebHost, a native SwiftUI surface, or Android.
 
 **See it on a device:** the counter demo's
 [`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample)
-consumes these exact artifacts — plugin `0.9.4` and
-`sh.swifttui:android-host:0.9.4` — and runs on an emulator or phone. It hosts
+consumes these exact artifacts — plugin `0.9.5` and
+`sh.swifttui:android-host:0.9.5` — and runs on an emulator or phone. It hosts
 the same `CounterView` that the terminal, SwiftUI, and browser hosts run, so it
 shows the one-source-many-hosts claim rather than describing it.
 
-> Pre-1.0 (0.9.4 beta). Published via GitHub Pages until the Gradle
+> Pre-1.0 (0.9.5 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
 
 > Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
@@ -116,7 +116,7 @@ check fails the build with that explanation instead.
 plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.plugin.compose")
-  id("sh.swifttui.android") version "0.9.4"
+  id("sh.swifttui.android") version "0.9.5"
 }
 
 android {
@@ -160,7 +160,7 @@ android {
 swiftTuiAndroidHost { productName = "MyAppHost" }
 
 dependencies {
-  implementation("sh.swifttui:android-host:0.9.4")
+  implementation("sh.swifttui:android-host:0.9.5")
   implementation(platform("androidx.compose:compose-bom:2026.08.00"))
   implementation("androidx.activity:activity-compose:1.13.0")
 }
@@ -186,7 +186,7 @@ let package = Package(
     .library(name: "MyAppHost", type: .dynamic, targets: ["MyAppHost"])
   ],
   dependencies: [
-    .package(url: "https://github.com/SwiftTUI/swift-tui.git", exact: "0.9.4")
+    .package(url: "https://github.com/SwiftTUI/swift-tui.git", exact: "0.9.5")
   ],
   targets: [
     .target(
