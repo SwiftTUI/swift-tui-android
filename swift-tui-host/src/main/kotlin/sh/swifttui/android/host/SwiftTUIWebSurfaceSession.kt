@@ -86,13 +86,15 @@ class SwiftTUIWebSurfaceSession {
   }
 
   private fun decodeFull(record: JSONObject): SwiftTUIFrame {
+    val width = record.requiredGridDimension("width")
+    val height = record.requiredGridDimension("height")
     val stamp = record.fullFrameStamp()
     val rows = parseRowTuples(record.optJSONArray("rows"))
     val styles = parseStyleTable(record.optJSONArray("styles"))
     baselineRows = rows
     baselineStyles = styles
-    baselineWidth = record.optInt("width")
-    baselineHeight = record.optInt("height")
+    baselineWidth = width
+    baselineHeight = height
     lastEpoch = stamp.epoch
     lastGeneration = stamp.generation
     pendingResyncScope = null
@@ -100,6 +102,8 @@ class SwiftTUIWebSurfaceSession {
   }
 
   private fun decodeDelta(record: JSONObject): SwiftTUIFrame? {
+    val width = record.requiredGridDimension("width")
+    val height = record.requiredGridDimension("height")
     // Validate the complete optional stamp tuple before consulting or mutating
     // session state. A malformed record is structural failure even while a
     // prior keyframe request is outstanding.
@@ -109,8 +113,6 @@ class SwiftTUIWebSurfaceSession {
     }
     val carriesBaselineStamp = stamp.epoch != null
     val baseline = baselineRows ?: return refuseDelta(carriesBaselineStamp)
-    val width = record.optInt("width")
-    val height = record.optInt("height")
     if (width != baselineWidth || height != baselineHeight) {
       return refuseDelta(carriesBaselineStamp)
     }
@@ -472,6 +474,16 @@ private fun JSONObject.optionalStringWeb(name: String): String? =
 
 private fun JSONObject.optionalIntWeb(name: String): Int? =
   if (has(name) && !isNull(name)) optInt(name) else null
+
+private fun JSONObject.requiredGridDimension(name: String): Int {
+  val value = get(name)
+  require(value is Number) { "web-surface $name must be a nonnegative Int dimension" }
+  val dimension = runCatching { value.toString().toBigDecimal().intValueExact() }.getOrNull()
+  require(dimension != null && dimension >= 0) {
+    "web-surface $name must be a nonnegative Int dimension"
+  }
+  return dimension
+}
 
 private fun JSONObject.optionalSafeWireInteger(name: String): Long? {
   if (!has(name)) {

@@ -185,6 +185,12 @@ data class SwiftTUIFrame(
   val requiresFullTextRepaint: Boolean,
   val requiresFullGraphicsReplay: Boolean
 ) {
+  // A decoded frame is retained unchanged while Compose paints it. Index once
+  // so partial paints do not rescan the entire surface for each damaged row.
+  internal val cellsByRow: Map<Int, List<SwiftTUICell>> by lazy {
+    cells.groupBy { it.y }
+  }
+
   /**
    * The rendered cell covering a 1-based terminal [column]/[row], or `null` if
    * none. Spans are resolved to their lead cell so a tap anywhere inside a

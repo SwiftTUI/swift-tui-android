@@ -47,22 +47,66 @@ object SwiftTUIDamagePlan {
       return FULL
     }
 
-    val fullWidthRange = 0..(frame.gridWidth - 1).coerceAtLeast(0)
-    val byRow = LinkedHashMap<Int, MutableList<IntRange>>()
-    for (row in frame.dirtyRows) {
-      byRow.getOrPut(row) { mutableListOf() }.add(fullWidthRange)
+    if (frame.gridWidth <= 0 || frame.gridHeight <= 0) {
+      return Plan(fullRepaint = false, rows = emptyList())
     }
+    val fullWidthRange = 0 until frame.gridWidth
+    val byRow = LinkedHashMap<Int, MutableList<IntRange>>()
     for (textRow in frame.textDamageRows) {
+      if (textRow.row !in 0 until frame.gridHeight) continue
       val ranges = byRow.getOrPut(textRow.row) { mutableListOf() }
+      if (textRow.columnRanges.isEmpty()) {
+        ranges.add(fullWidthRange)
+      }
       for (range in textRow.columnRanges) {
         // SwiftTUIRange mirrors a Swift Range<Int> (upperBound exclusive).
-        if (range.upperBound > range.lowerBound) {
-          ranges.add(range.lowerBound..(range.upperBound - 1))
+        val lower = range.lowerBound.coerceIn(0, frame.gridWidth)
+        val upper = range.upperBound.coerceIn(0, frame.gridWidth)
+        if (upper > lower) {
+          ranges.add(lower until upper)
         }
       }
     }
+    // The decoder's dirtyRows is a summary of detailed damage, not an
+    // additional full-row invalidation. Only summary-only rows use full width.
+    for (row in frame.dirtyRows) {
+      if (row in 0 until frame.gridHeight && row !in byRow) {
+        byRow[row] = mutableListOf(fullWidthRange)
+      }
+    }
 
-    val rows = byRow.map { (row, ranges) -> RowDamage(row, ranges.toList()) }
+    val rows = byRow.mapNotNull { (row, ranges) ->
+      val merged = mutableListOf<IntRange>()
+      for (range in ranges.sortedBy { it.first }) {
+        val previous = merged.lastOrNull()
+        if (previous != null && range.first <= previous.last + 1) {
+          merged[merged.lastIndex] = previous.first..maxOf(previous.last, range.last)
+        } else {
+          merged.add(range)
+        }
+      }
+      if (merged.isEmpty()) null else RowDamage(row, merged)
+    }
     return Plan(fullRepaint = false, rows = rows)
+  }
+
+  /** Visits only indexed damaged rows; returns the number of cells examined. */
+  internal fun forEachDamagedCell(
+    frame: SwiftTUIFrame,
+    plan: Plan,
+    action: (SwiftTUICell) -> Unit
+  ): Int {
+    var visited = 0
+    for (row in plan.rows) {
+      for (cell in frame.cellsByRow[row.row].orEmpty()) {
+        visited += 1
+        if (!cell.isContinuation &&
+          row.intersects(cell.x, cell.x + cell.spanWidth.coerceAtLeast(1))
+        ) {
+          action(cell)
+        }
+      }
+    }
+    return visited
   }
 }

@@ -303,3 +303,17 @@ cd swift-tui-counter-demo/AndroidExample
 ## License
 
 MIT; see [LICENSE](LICENSE).
+
+The renderer indexes decoded frame cells by row for partial painting. Detailed
+column damage takes precedence over the decoder's dirty-row summary; a row
+with no column details repaints at full width. Image-bearing frames retain the
+conservative full repaint behavior. Surface grid dimensions must be nonnegative
+integers representable by Kotlin `Int`; malformed dimensions are rejected
+before changing a decoder baseline. These are structural checks, not device
+bitmap-allocation limits.
+
+Partial Canvas repaints clip to the union of damaged column ranges, preserving
+unchanged gaps and the clean portion of any overlapping wide cell. Glyph and
+decoration ink stays inside its declared cell span on both full and partial
+paints. Italic or fallback-font overhang outside that span is now clipped even
+on full paints; this is a rendering behavior change with no public API change.

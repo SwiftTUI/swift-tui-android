@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -32,7 +33,6 @@ class SwiftTUIRenderer internal constructor(
   private val backgroundPaint = Paint()
   private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-  private val clearPaint = Paint()
   private val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     color = android.graphics.Color.rgb(151, 162, 178)
     typeface = Typeface.MONOSPACE
@@ -147,25 +147,24 @@ class SwiftTUIRenderer internal constructor(
       drawCells(canvas, frame.cells, terminalStyle, style, baselineOffset)
       drawImages(canvas, frame, style)
     } else {
-      clearPaint.color = backgroundArgb
       val damagedCells = ArrayList<SwiftTUICell>()
-      for (rowDamage in plan.rows) {
-        val top = rowDamage.row * style.cellHeightPx
-        val bottom = top + style.cellHeightPx
-        for (range in rowDamage.columnRanges) {
-          val left = range.first * style.cellWidthPx
-          val right = (range.last + 1) * style.cellWidthPx
-          canvas.drawRect(left, top, right, bottom, clearPaint)
-        }
-        for (cell in frame.cells) {
-          if (cell.y == rowDamage.row && !cell.isContinuation &&
-            rowDamage.intersects(cell.x, cell.x + cell.spanWidth.coerceAtLeast(1))
-          ) {
-            damagedCells.add(cell)
-          }
+      val damagePath = Path()
+      for (rect in SwiftTUIRasterClipGeometry.damage(plan)) {
+        damagePath.addRect(pixelRect(rect, style), Path.Direction.CW)
+      }
+      if (!damagePath.isEmpty) {
+        val saved = canvas.save()
+        try {
+          // One union clip preserves holes between damaged ranges. A selected
+          // wide lead may cover clean columns that must not be composited twice.
+          canvas.clipPath(damagePath)
+          canvas.drawColor(backgroundArgb, PorterDuff.Mode.SRC)
+          SwiftTUIDamagePlan.forEachDamagedCell(frame, plan, damagedCells::add)
+          drawCells(canvas, damagedCells, terminalStyle, style, baselineOffset)
+        } finally {
+          canvas.restoreToCount(saved)
         }
       }
-      drawCells(canvas, damagedCells, terminalStyle, style, baselineOffset)
     }
 
     lastRenderedSequence = frame.consumedGeneration
@@ -183,7 +182,7 @@ class SwiftTUIRenderer internal constructor(
         return@forEach
       }
 
-      val rect = cellRect(cell.x, cell.y, cell.spanWidth.coerceAtLeast(1), style)
+      val rect = pixelRect(SwiftTUIRasterClipGeometry.cell(cell), style)
       val textStyle = cell.style
       val reverse = textStyle?.emphasis?.contains("reverse") == true
       val foreground = if (reverse) {
@@ -202,46 +201,60 @@ class SwiftTUIRenderer internal constructor(
         canvas.drawRect(rect, backgroundPaint)
       }
 
-      if (cell.character != " " && cell.character.isNotEmpty()) {
-        val foregroundArgb = foreground.toArgb(
-          opacity = textStyle?.opacity ?: 1.0,
-          faint = textStyle?.emphasis?.contains("faint") == true
-        )
-        // Box-drawing / block / braille glyphs are painted procedurally so they
-        // tile seamlessly between cells instead of leaving font gaps.
-        val codePoint = cell.character.codePointAt(0)
-        val drawnProcedurally =
-          cell.character.codePointCount(0, cell.character.length) == 1 &&
-            SwiftTUIBoxDrawing.canRender(codePoint) &&
-            SwiftTUIBoxDrawing.draw(canvas, codePoint, rect, foregroundArgb)
-
-        if (!drawnProcedurally) {
-          configureTextPaint(foregroundArgb = foregroundArgb, style = textStyle)
-          canvas.drawText(
-            cell.character,
-            rect.left,
-            rect.top + baselineOffset,
-            textPaint
-          )
-        }
+      if ((cell.character == " " || cell.character.isEmpty()) &&
+        textStyle?.underlineStyle == null && textStyle?.strikethroughStyle == null
+      ) {
+        return@forEach
       }
 
-      drawLineDecoration(
-        canvas = canvas,
-        rect = rect,
-        style = textStyle?.underlineStyle,
-        fallbackColor = foreground,
-        opacity = textStyle?.opacity ?: 1.0,
-        y = rect.bottom - 2f
-      )
-      drawLineDecoration(
-        canvas = canvas,
-        rect = rect,
-        style = textStyle?.strikethroughStyle,
-        fallbackColor = foreground,
-        opacity = textStyle?.opacity ?: 1.0,
-        y = rect.centerY()
-      )
+      // Full paints and partial paints share the same ink ownership. Italic
+      // overhang and decorations cannot leave pixels outside the declared span.
+      val saved = canvas.save()
+      try {
+        canvas.clipRect(rect)
+        if (cell.character != " " && cell.character.isNotEmpty()) {
+          val foregroundArgb = foreground.toArgb(
+            opacity = textStyle?.opacity ?: 1.0,
+            faint = textStyle?.emphasis?.contains("faint") == true
+          )
+          // Box-drawing / block / braille glyphs are painted procedurally so
+          // they tile between cells without gaps from the font.
+          val codePoint = cell.character.codePointAt(0)
+          val drawnProcedurally =
+            cell.character.codePointCount(0, cell.character.length) == 1 &&
+              SwiftTUIBoxDrawing.canRender(codePoint) &&
+              SwiftTUIBoxDrawing.draw(canvas, codePoint, rect, foregroundArgb)
+
+          if (!drawnProcedurally) {
+            configureTextPaint(foregroundArgb = foregroundArgb, style = textStyle)
+            canvas.drawText(
+              cell.character,
+              rect.left,
+              rect.top + baselineOffset,
+              textPaint
+            )
+          }
+        }
+
+        drawLineDecoration(
+          canvas = canvas,
+          rect = rect,
+          style = textStyle?.underlineStyle,
+          fallbackColor = foreground,
+          opacity = textStyle?.opacity ?: 1.0,
+          y = rect.bottom - 2f
+        )
+        drawLineDecoration(
+          canvas = canvas,
+          rect = rect,
+          style = textStyle?.strikethroughStyle,
+          fallbackColor = foreground,
+          opacity = textStyle?.opacity ?: 1.0,
+          y = rect.centerY()
+        )
+      } finally {
+        canvas.restoreToCount(saved)
+      }
     }
   }
 
@@ -251,28 +264,25 @@ class SwiftTUIRenderer internal constructor(
     style: SwiftTUIAndroidStyle
   ) {
     frame.imageAttachments.forEach { attachment ->
+      val placement = SwiftTUIImagePlacement.forAttachment(attachment) ?: return@forEach
       val cacheKey = swiftTUIImageCacheKey(attachment)
       val bitmap = bitmapFor(attachment) ?: return@forEach
       if (bitmap.isRecycled) {
         bitmapCache.remove(cacheKey)
         return@forEach
       }
-      val bounds = attachment.visibleBounds
-      if (bounds.width <= 0 || bounds.height <= 0) {
-        return@forEach
-      }
-
-      val rect = RectF(
-        bounds.x * style.cellWidthPx,
-        bounds.y * style.cellHeightPx,
-        (bounds.x + bounds.width) * style.cellWidthPx,
-        (bounds.y + bounds.height) * style.cellHeightPx
-      )
+      val rect = pixelRect(placement.destination, style)
       // Alpha belongs to the placement, not the decoded image. The bitmap
       // remains cached under content identity while every replay applies the
       // current effective opacity.
       imagePaint.alpha = swiftTUIImageAlpha(attachment.opacity)
-      canvas.drawBitmap(bitmap, null, rect, imagePaint)
+      val saved = canvas.save()
+      try {
+        canvas.clipRect(pixelRect(placement.clip, style))
+        canvas.drawBitmap(bitmap, null, rect, imagePaint)
+      } finally {
+        canvas.restoreToCount(saved)
+      }
     }
   }
 
@@ -303,17 +313,15 @@ class SwiftTUIRenderer internal constructor(
     canvas.drawLine(rect.left, y, rect.right, y, linePaint)
   }
 
-  private fun cellRect(
-    x: Int,
-    y: Int,
-    span: Int,
+  private fun pixelRect(
+    rect: SwiftTUIRect,
     style: SwiftTUIAndroidStyle
   ): RectF =
     RectF(
-      x * style.cellWidthPx,
-      y * style.cellHeightPx,
-      (x + span) * style.cellWidthPx,
-      (y + 1) * style.cellHeightPx
+      rect.x * style.cellWidthPx,
+      rect.y * style.cellHeightPx,
+      SwiftTUIRasterClipGeometry.pixelEnd(rect.x, rect.width, style.cellWidthPx),
+      SwiftTUIRasterClipGeometry.pixelEnd(rect.y, rect.height, style.cellHeightPx)
     )
 
   private fun typeface(emphasis: Set<String>): Typeface {
