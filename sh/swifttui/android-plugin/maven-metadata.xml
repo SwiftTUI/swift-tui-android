@@ -3,8 +3,8 @@
   <groupId>sh.swifttui</groupId>
   <artifactId>android-plugin</artifactId>
   <versioning>
-    <latest>0.13.0</latest>
-    <release>0.13.0</release>
+    <latest>0.13.1</latest>
+    <release>0.13.1</release>
     <versions>
       <version>0.0.21</version>
       <version>0.0.23</version>
@@ -76,7 +76,8 @@
       <version>0.12.0</version>
       <version>0.12.1</version>
       <version>0.13.0</version>
+      <version>0.13.1</version>
     </versions>
-    <lastUpdated>20260910170914</lastUpdated>
+    <lastUpdated>20260912091627</lastUpdated>
   </versioning>
 </metadata>
