@@ -30,6 +30,7 @@ android {
 
   defaultConfig {
     minSdk = 28
+    testInstrumentationRunner = "sh.swifttui.android.host.ClipQualificationRunner"
 
     ndk {
       // arm64-v8a only — keep in sync with src/main/jni/Application.mk. See the
