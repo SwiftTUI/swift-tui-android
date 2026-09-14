@@ -1,0 +1,64 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "sh.swifttui",
+    "module": "android-plugin",
+    "version": "0.13.3",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 25,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.13.3.jar",
+          "url": "android-plugin-0.13.3.jar",
+          "size": 63002,
+          "sha512": "cca260f587aa2f466da3a05261e45de9703effc5e5dd5ea93d1841dd12bf8f9e9914a28183da70768a2cb9b6c668ac2cf30dd46e92bf619f9619637886ca8c0f",
+          "sha256": "0c22f308ef336799c91023618cee2f29f382e1779fb0bec51aca73ed0607390e",
+          "sha1": "a92ca12dd6729507202ae990b0f3f9f80fe5f00a",
+          "md5": "edd4f5c07de49115e938529ffbbf49fd"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 25,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.13.3.jar",
+          "url": "android-plugin-0.13.3.jar",
+          "size": 63002,
+          "sha512": "cca260f587aa2f466da3a05261e45de9703effc5e5dd5ea93d1841dd12bf8f9e9914a28183da70768a2cb9b6c668ac2cf30dd46e92bf619f9619637886ca8c0f",
+          "sha256": "0c22f308ef336799c91023618cee2f29f382e1779fb0bec51aca73ed0607390e",
+          "sha1": "a92ca12dd6729507202ae990b0f3f9f80fe5f00a",
+          "md5": "edd4f5c07de49115e938529ffbbf49fd"
+        }
+      ]
+    }
+  ]
+}
