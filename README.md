@@ -2,9 +2,9 @@
 
 **Mount your SwiftTUI app inside a Jetpack Compose UI: the same `App`, `@State`, and `@FocusState` you run in a terminal, now a native Compose view.**
 
-![Swift 6.3](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)
+![Swift 6.4](https://img.shields.io/badge/Swift-6.4-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Android%20(minSdk%2028)-3DDC84?logo=android&logoColor=white)
-![Status](https://img.shields.io/badge/status-0.13.3%20pre--release-DAA520)
+![Status](https://img.shields.io/badge/status-0.13.4%20pre--release-DAA520)
 ![License](https://img.shields.io/badge/license-MIT-3DA639)
 
 `swift-tui-android` is the Android host for [SwiftTUI](https://swifttui.sh). The
@@ -14,16 +14,16 @@ terminal, a WASI bundle, a local WebHost, a native SwiftUI surface, or Android.
 
 **See it on a device:** the counter demo's
 [`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample)
-consumes these exact artifacts — plugin `0.13.3` and
-`sh.swifttui:android-host:0.13.3` — and runs on an emulator or phone. It hosts
+consumes these exact artifacts — plugin `0.13.4` and
+`sh.swifttui:android-host:0.13.4` — and runs on an emulator or phone. It hosts
 the same `CounterView` that the terminal, SwiftUI, and browser hosts run, so it
 shows the one-source-many-hosts claim rather than describing it.
 
-> Pre-1.0 (0.13.3 beta). Published via GitHub Pages until the Gradle
+> Pre-1.0 (0.13.4 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
 
 > Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
-> NDK `27.3.13750724`, Swift 6.3.x, and the Swift Android SDK through the
+> NDK `27.3.13750724`, Swift 6.4.x, and the Swift Android SDK through the
 > published AAR/Gradle-plugin packaging path. The lower-level host can
 > cross-compile x86_64, but x86_64 packaging and IME marked/pre-edit
 > composition are outside the 0.9 claim. The Compose accessibility overlay is
@@ -116,7 +116,7 @@ check fails the build with that explanation instead.
 plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.plugin.compose")
-  id("sh.swifttui.android") version "0.13.3"
+  id("sh.swifttui.android") version "0.13.4"
 }
 
 android {
@@ -160,7 +160,7 @@ android {
 swiftTuiAndroidHost { productName = "MyAppHost" }
 
 dependencies {
-  implementation("sh.swifttui:android-host:0.13.3")
+  implementation("sh.swifttui:android-host:0.13.4")
   implementation(platform("androidx.compose:compose-bom:2026.08.00"))
   implementation("androidx.activity:activity-compose:1.13.0")
 }
@@ -176,7 +176,7 @@ Author against **`SwiftTUIRuntime`**, not the `SwiftTUI` umbrella — the umbrel
 pulls in terminal-only PTY primitives that do not compile for Android.
 
 ```swift
-// swift-tools-version: 6.3
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
@@ -186,7 +186,7 @@ let package = Package(
     .library(name: "MyAppHost", type: .dynamic, targets: ["MyAppHost"])
   ],
   dependencies: [
-    .package(url: "https://github.com/SwiftTUI/swift-tui.git", exact: "0.13.3")
+    .package(url: "https://github.com/SwiftTUI/swift-tui.git", exact: "0.13.4")
   ],
   targets: [
     .target(
@@ -264,7 +264,7 @@ swiftTuiAndroidHost {
   Studio 2026.1 refuses to sync a project on 9.3.x. Building one SDK ahead of
   the plugin is supported but warned about; silence it with
   `android.suppressUnsupportedCompileSdk=37.1` in `gradle.properties`.
-- Install Swift 6.3.x and the Swift Android SDK to cross-compile the host `.so`.
+- Install Swift 6.4.x and the Swift Android SDK to cross-compile the host `.so`.
   The plugin looks for the bundle under
   `~/Library/org.swift.swiftpm/swift-sdks/`; elsewhere (Linux, or a custom
   install) point `SWIFT_ANDROID_SDK_BUNDLE` at the `.artifactbundle`.

@@ -29,8 +29,8 @@ hostConfig.swiftTuiCheckout.convention(
 )
 
 val swiftSdkName = "aarch64-unknown-linux-android28"
-val swiftToolchainVersion = "+6.3.3"
-val swiftSdkArtifactName = "swift-6.3.3-RELEASE_android"
+val swiftToolchainVersion = "+6.4.0"
+val swiftSdkArtifactName = "swift-6.4.0-RELEASE_android"
 val swiftTuiDependencyUrl = "https://github.com/SwiftTUI/swift-tui.git"
 val swiftBuildSubpath = ".build/$swiftSdkName/debug"
 val generatedJniLibsDir = layout.buildDirectory.dir("generated/swiftJniLibs")
@@ -53,8 +53,13 @@ val defaultSwiftSdkBundleDir = "$swiftSdksDir/$swiftSdkArtifactName.artifactbund
 val swiftSdkBundleDir = providers.environmentVariable("SWIFT_ANDROID_SDK_BUNDLE")
   .orElse(defaultSwiftSdkBundleDir)
 val defaultSwiftAndroidRoot = swiftSdkBundleDir.map { "$it/swift-android" }
-val defaultAndroidNdkDir =
-  "$swiftSdksDir/swift-6.3-RELEASE_android.artifactbundle/swift-android/android-ndk-r27d"
+val defaultAndroidSdkDir = if (
+  providers.systemProperty("os.name").get().lowercase().contains("mac")
+) "$userHome/Library/Android/sdk" else "$userHome/Android/Sdk"
+val defaultAndroidNdkDir = providers.environmentVariable("ANDROID_HOME")
+  .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
+  .orElse(defaultAndroidSdkDir)
+  .map { "$it/ndk/27.3.13750724" }
 val swiftAndroidRoot = providers.environmentVariable("SWIFT_ANDROID_ROOT")
   .orElse(defaultSwiftAndroidRoot)
 val swiftAndroidNdkDir = providers.environmentVariable("ANDROID_NDK_HOME")
@@ -307,6 +312,8 @@ val buildSwiftAndroid = tasks.register<Exec>("buildSwiftAndroid") {
   swiftlyRun(
     "build",
     swiftToolchainVersion,
+    "--build-system",
+    "native",
     "--package-path",
     packageDir.absolutePath,
     "--swift-sdks-path",

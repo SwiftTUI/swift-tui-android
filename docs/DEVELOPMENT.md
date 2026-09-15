@@ -3,7 +3,7 @@
 ## Toolchains
 
 The Android SDK plus NDK `27.3.13750724` (`minSdk 28`) build the JNI shim;
-Swift 6.3.x with the Swift Android SDK cross-compiles the host `.so`. The
+Swift 6.4.x with the Swift Android SDK cross-compiles the host `.so`. The
 repository does not vendor these toolchains.
 
 ## Build & test
