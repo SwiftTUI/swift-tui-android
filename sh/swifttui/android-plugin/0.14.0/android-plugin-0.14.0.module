@@ -1,0 +1,64 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "sh.swifttui",
+    "module": "android-plugin",
+    "version": "0.14.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.14.0.jar",
+          "url": "android-plugin-0.14.0.jar",
+          "size": 64222,
+          "sha512": "df75489b2e8e85000660d979c3cc2a8958302a2b851271912e3c1e9b6902ec77baa40d448a1ac1353d43eb9862531ef6ad1c11ea1aa14d4fad0f8dbfca40b9b4",
+          "sha256": "673e6a3a169703065f22fe51afdd2371b35adfd9fff812ffafd96891fbb85050",
+          "sha1": "7d69c460225b604629b9d6a42da75dfeacdbae3d",
+          "md5": "0e667300adcae88b69bb00c58f64607d"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.14.0.jar",
+          "url": "android-plugin-0.14.0.jar",
+          "size": 64222,
+          "sha512": "df75489b2e8e85000660d979c3cc2a8958302a2b851271912e3c1e9b6902ec77baa40d448a1ac1353d43eb9862531ef6ad1c11ea1aa14d4fad0f8dbfca40b9b4",
+          "sha256": "673e6a3a169703065f22fe51afdd2371b35adfd9fff812ffafd96891fbb85050",
+          "sha1": "7d69c460225b604629b9d6a42da75dfeacdbae3d",
+          "md5": "0e667300adcae88b69bb00c58f64607d"
+        }
+      ]
+    }
+  ]
+}
