@@ -187,7 +187,7 @@ class SwiftTUIFramePollerTest {
         epoch = 91,
         generation = 1,
         text = "A",
-        imagesJson = imageJson(id = "alpha", payload = "payload-alpha")
+        imagesJson = imageJson(id = "alpha", payload = "payload-alpha") + "," + imageJson(id = "beta", payload = null)
       )
     )
     assertTrue(poller.poll(6) is SwiftTUIFramePollResult.Frame)

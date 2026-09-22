@@ -528,7 +528,7 @@ class SwiftTUIWebSurfaceSessionTest {
       """"damage":{"textRows":[[0,[[0,1]]]],"requiresFullTextRepaint":false,""" +
       """"requiresFullGraphicsReplay":false}}""" + "\n"
     assertNull(session.decode(badRow))
-    assertNull(session.pendingResyncScope)
+    assertEquals("keyframe", session.pendingResyncScope)
   }
 
   @Test

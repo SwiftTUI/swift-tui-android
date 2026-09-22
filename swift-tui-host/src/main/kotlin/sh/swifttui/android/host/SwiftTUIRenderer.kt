@@ -346,6 +346,9 @@ class SwiftTUIRenderer internal constructor(
         val bytes = runCatching {
           Base64.decode(payload, Base64.DEFAULT)
         }.getOrNull() ?: return@decode null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (!SwiftTUIWireBudget.imageSize(bounds.outWidth, bounds.outHeight)) return@decode null
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
       },
       maxSize = bitmapCache::maxSize,

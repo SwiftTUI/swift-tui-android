@@ -12,6 +12,12 @@ Gradle plugin cross-builds your Swift-authored view tree to a native `.so`.
 The `SwiftTUIHostView` composable renders it. The same `View` tree can run in a
 terminal, a WASI bundle, a local WebHost, a native SwiftUI surface, or Android.
 
+Host-wire admission caps records at 4 MiB of UTF-8 and grids at 1,024 cells
+per axis / 65,536 cells total. Oversized input preserves the last valid frame
+and requests one keyframe repair; size-query limits apply before buffer
+allocation. See the shared [allocation policy](https://github.com/SwiftTUI/swift-tui/blob/main/docs/HOST-WIRE-CONTRACT.md#allocation-budgets)
+for metadata, framing, and bitmap limits.
+
 **See it on a device:** the counter demo's
 [`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample)
 consumes these exact artifacts — plugin `0.14.0` and

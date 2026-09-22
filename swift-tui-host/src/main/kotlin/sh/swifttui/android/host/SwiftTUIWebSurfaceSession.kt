@@ -72,11 +72,19 @@ class SwiftTUIWebSurfaceSession {
    */
   fun decode(payload: String): SwiftTUIFrame? {
     require(payload.startsWith(RECORD_PREFIX)) { "not a web-surface record" }
+    val byteLimit = SwiftTUIWireBudget.RECORD_BYTES + if (payload.endsWith('\n')) 1 else 0
+    if (!SwiftTUIWireBudget.fitsUTF8(payload, byteLimit) || !SwiftTUIWireBudget.depth(payload)) {
+      return refuseDelta(shouldRequestKeyframe = true)
+    }
     val record = JSONObject(payload.removePrefix(RECORD_PREFIX).trimEnd('\n'))
     val version = record.optInt("version", 0)
     require(version <= SUPPORTED_WEB_SURFACE_VERSION) {
       "web-surface version $version is newer than the supported " +
         "$SUPPORTED_WEB_SURFACE_VERSION; update the swift-tui-android host library."
+    }
+    if (version in 1..3 && !SwiftTUIWireBudget.surface(
+        record, record.requiredGridDimension("width"), record.requiredGridDimension("height"))) {
+      return refuseDelta(shouldRequestKeyframe = true)
     }
     return when {
       version == 1 || version == 2 -> decodeFull(record)
@@ -91,6 +99,7 @@ class SwiftTUIWebSurfaceSession {
     val stamp = record.fullFrameStamp()
     val rows = parseRowTuples(record.optJSONArray("rows"))
     val styles = parseStyleTable(record.optJSONArray("styles"))
+    val frame = buildFrame(record, rows, styles)
     baselineRows = rows
     baselineStyles = styles
     baselineWidth = width
@@ -98,7 +107,7 @@ class SwiftTUIWebSurfaceSession {
     lastEpoch = stamp.epoch
     lastGeneration = stamp.generation
     pendingResyncScope = null
-    return buildFrame(record, rows, styles)
+    return frame
   }
 
   private fun decodeDelta(record: JSONObject): SwiftTUIFrame? {
@@ -148,11 +157,12 @@ class SwiftTUIWebSurfaceSession {
       }
       rows[row] = parseCellTuples(row, entry.optJSONArray(1))
     }
+    val frame = buildFrame(record, rows, styles)
     baselineRows = rows
     baselineStyles = styles
     lastEpoch = stamp.epoch
     lastGeneration = stamp.generation
-    return buildFrame(record, rows, styles)
+    return frame
   }
 
   private fun refuseDelta(shouldRequestKeyframe: Boolean): SwiftTUIFrame? {
@@ -216,13 +226,13 @@ class SwiftTUIWebSurfaceSession {
     val focusPresentation = record.optJSONObject("focusPresentation")
       ?.toWebFocusPresentation() ?: SwiftTUIFocusPresentation.None
 
-    consumedGeneration += 1
+    val nextConsumedGeneration = consumedGeneration + 1
     return SwiftTUIFrame(
       sequence = record.optLong("sequence", 0L),
       // Contiguous per decoded frame: the converged wire's damage is
       // consumption-relative (the Swift host accumulates it across skipped
       // polls), so partial repaints stay legal across sequence gaps.
-      consumedGeneration = consumedGeneration,
+      consumedGeneration = nextConsumedGeneration,
       gridWidth = record.optInt("width"),
       gridHeight = record.optInt("height"),
       preferredGridWidth = record.optionalIntWeb("preferredGridWidth"),
@@ -249,7 +259,7 @@ class SwiftTUIWebSurfaceSession {
       textDamageRows = textDamageRows,
       requiresFullTextRepaint = damage?.optBoolean("requiresFullTextRepaint", true) ?: true,
       requiresFullGraphicsReplay = damage?.optBoolean("requiresFullGraphicsReplay", true) ?: true
-    )
+    ).also { consumedGeneration = nextConsumedGeneration }
   }
 
   private fun parseStyleTable(array: JSONArray?): List<SwiftTUITextStyle?> = buildList {

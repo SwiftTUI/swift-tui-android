@@ -48,7 +48,9 @@ internal class SwiftTUIFramePoller(
 
   fun reportMissingImagePayloads(ids: Iterable<String>) {
     for (id in ids) {
-      if (id !in outstandingImagePayloadIds) {
+      if (id.isNotEmpty() && SwiftTUIWireBudget.fitsUTF8(id, 1024) &&
+        queuedImagePayloadIds.size + outstandingImagePayloadIds.size < SwiftTUIWireBudget.IMAGES &&
+        id !in outstandingImagePayloadIds) {
         queuedImagePayloadIds.add(id)
       }
     }
@@ -60,10 +62,12 @@ internal class SwiftTUIFramePoller(
       dispatchPendingResync(handle)
       return SwiftTUIFramePollResult.None
     }
+    if (needed > SwiftTUIWireBudget.RECORD_BYTES + 1) return refuseOversizedRecord(handle)
 
     var bytes = ByteArray(needed)
     var copied = copyLatestFrame(handle, bytes, bytes.size)
     if (copied > bytes.size) {
+      if (copied > SwiftTUIWireBudget.RECORD_BYTES + 1) return refuseOversizedRecord(handle)
       // The record grew between the size query and the copy, so no bytes were
       // written. A delivery-coupled host never does this — its copy leg serves
       // exactly the bytes the size query measured — but an older native host
@@ -80,6 +84,9 @@ internal class SwiftTUIFramePoller(
 
     val payload = bytes.decodeToString(0, copied)
     val decoded = runCatching {
+      require(!payload.startsWith("\u001EruntimeIssue:")) {
+        "SwiftTUI host refused to encode the frame within its wire allocation budget."
+      }
       require(SwiftTUIWebSurfaceSession.isWebSurfaceRecord(payload)) {
         "legacy SwiftTUI frame received; the app's swift-tui host library " +
           "predates the converged web-surface wire — update the swift-tui " +
@@ -102,6 +109,9 @@ internal class SwiftTUIFramePoller(
     }
 
     var isImagePayloadRepair = false
+    val presentedIds = frame.imageAttachments.mapTo(mutableSetOf()) { it.id }
+    queuedImagePayloadIds.retainAll(presentedIds)
+    outstandingImagePayloadIds.retainAll(presentedIds)
     for (attachment in frame.imageAttachments) {
       if (attachment.payloadBase64 != null) {
         if (
@@ -154,6 +164,12 @@ internal class SwiftTUIFramePoller(
     // As with keyframes, zero means an older host lacks the lazy symbol.
     // Keeping the IDs outstanding prevents a 30 Hz request loop.
     requestResync(handle, request, request.size)
+  }
+
+  private fun refuseOversizedRecord(handle: Long): SwiftTUIFramePollResult {
+    session.requestKeyframeRecovery()
+    dispatchPendingResync(handle)
+    return SwiftTUIFramePollResult.Error("SwiftTUI wire record exceeds the byte budget")
   }
 
   private companion object {
