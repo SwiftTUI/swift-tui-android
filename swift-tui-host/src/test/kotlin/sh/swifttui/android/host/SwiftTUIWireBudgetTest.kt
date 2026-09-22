@@ -71,6 +71,28 @@ class SwiftTUIWireBudgetTest {
   }
 
   @Test
+  fun lenientJsonSyntaxCannotHideNestingFromAdmission() {
+    val nested = "[".repeat(10000) + "0" + "]".repeat(10000)
+    val hostile = listOf(
+      """{"future":'"',"deep":$nested}""",
+      """{/* " */ "deep":$nested}""",
+      "{// \"\n\"deep\":$nested}",
+      "{# \"\n\"deep\":$nested}",
+      """{"future":bare"quote,"deep":$nested}""",
+    )
+    for (json in hostile) {
+      val session = SwiftTUIWebSurfaceSession()
+      session.decode(wire(base()))
+      assertNull(session.decode(SwiftTUIWebSurfaceSession.RECORD_PREFIX + json))
+      assertEquals("keyframe", session.pendingResyncScope)
+      assertEquals(2L, session.decode(wire(base()))!!.consumedGeneration)
+    }
+    // Quotes, apostrophes and comment markers remain ordinary string content.
+    val valid = base().put("future", "https://host/'quoted' # /* \\\" */")
+    assertNotNull(SwiftTUIWebSurfaceSession().decode(wire(valid)))
+  }
+
+  @Test
   fun oversizedSizeQueriesAndRetrySizesNeverAllocateOrRequestRepeatedly() {
     for (oversizedOnRetry in listOf(false, true)) {
       var copies = 0

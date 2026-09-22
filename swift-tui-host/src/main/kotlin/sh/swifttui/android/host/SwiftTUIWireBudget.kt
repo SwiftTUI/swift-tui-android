@@ -47,15 +47,29 @@ internal object SwiftTUIWireBudget {
     var depth = 0
     var quoted = false
     var escaped = false
+    var primitive = false
     for (c in text) {
       if (quoted) {
         if (escaped) escaped = false
         else if (c == '\\') escaped = true
         else if (c == '"') quoted = false
-      } else if (c == '"') quoted = true
-      else if (c == '[' || c == '{') {
+      } else if (c == '"') {
+        // Android's lenient JSONTokener accepts quotes inside unquoted
+        // literals. Such a quote must not hide later nesting from this scan.
+        if (primitive) return false
+        quoted = true
+      } else if (c == '\'' || c == '/' || c == '#') {
+        // Single-quoted strings and comments are outside the JSON wire
+        // contract and can contain quotes that disagree with this scanner.
+        return false
+      } else if (c == '[' || c == '{') {
+        primitive = false
         if (++depth > JSON_DEPTH) return false
-      } else if (c == ']' || c == '}') depth--
+      } else if (c == ']' || c == '}') {
+        primitive = false
+        if (--depth < 0) return false
+      } else if (c == ':' || c == ',' || c.isWhitespace()) primitive = false
+      else primitive = true
     }
     return true
   }
