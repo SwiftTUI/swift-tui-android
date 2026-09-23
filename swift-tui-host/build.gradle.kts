@@ -8,7 +8,7 @@ val userHome = providers.systemProperty("user.home").get()
 val androidSdkDir = providers.environmentVariable("ANDROID_HOME")
   .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
   .orElse("$userHome/Library/Android/sdk")
-val ndkVersionPin = "27.3.13750724"
+val ndkVersionPin = "30.0.16248370"
 
 // The JNI shim is pure C++17 (NDK only — no Swift toolchain). Gate the native
 // build on NDK presence so a JVM-only `testDebugUnitTest` gate can configure and

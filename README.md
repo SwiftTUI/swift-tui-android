@@ -29,12 +29,15 @@ shows the one-source-many-hosts claim rather than describing it.
 > Plugin Portal / Maven Central graduation.
 
 > Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
-> NDK `27.3.13750724`, Swift 6.4.x, and the Swift Android SDK through the
+> NDK `30.0.16248370`, Swift 6.4.x, and the Swift Android SDK through the
 > published AAR/Gradle-plugin packaging path. The lower-level host can
 > cross-compile x86_64, but x86_64 packaging and IME marked/pre-edit
-> composition are outside the 0.9 claim. The Compose accessibility overlay is
-> one-way semantic presentation; TalkBack-origin focus and control actions do
-> not route back into SwiftTUI.
+> composition are outside the 0.9 claim. The accessibility overlay uses a native virtual
+> hierarchy inside Compose. With a runtime advertising semantic actions, it
+> routes accessibility focus, activation, adjustment and text edits through JNI;
+> runtime frames remain authoritative. The released 0.14.0 runtime supplies
+> presentation only. Connected TalkBack acceptance of the new action path has
+> not yet been established.
 
 ## Why use it
 
@@ -135,7 +138,7 @@ android {
 
   // Pin the NDK rather than taking AGP's default: it strips the packaged Swift
   // `.so` files, and a default your machine has not installed fails the build.
-  ndkVersion = "27.3.13750724"
+  ndkVersion = "30.0.16248370"
 
   defaultConfig {
     applicationId = "com.example.myapp"
@@ -262,7 +265,7 @@ swiftTuiAndroidHost {
 
 ## Requirements
 
-- Install the Android SDK Platform **37.1** and NDK `27.3.13750724` for the JNI
+- Install the Android SDK Platform **37.1** and NDK `30.0.16248370` for the JNI
   shim. Use `minSdk 28` and `compileSdk 37.1` — both this AAR and Compose
   `1.12.0` declare `minCompileSdk 37`, so a lower `compileSdk` fails
   `checkAarMetadata`.

@@ -262,6 +262,7 @@ fun SwiftTUIHostView(
         SwiftTUIAccessibilityOverlay(
           frame = frame,
           style = style,
+          sendAction = state::sendAccessibilityAction,
           modifier = Modifier.fillMaxSize()
         )
       }

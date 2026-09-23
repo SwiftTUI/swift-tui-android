@@ -329,6 +329,36 @@ jint nativeRequestResync(
   return accepted;
 }
 
+jint nativeAccessibilityAction(
+  JNIEnv* env,
+  jobject,
+  jlong handle,
+  jbyteArray json,
+  jint count
+) {
+  // Older runtime libraries return unsupported instead of interpreting actions as keys.
+  auto accessibilityAction =
+    swiftSymbol<RequestResyncFunction>("swift_tui_android_accessibility_action");
+  if (accessibilityAction == nullptr || json == nullptr || count <= 0) {
+    return 0;
+  }
+
+  jsize arrayLength = env->GetArrayLength(json);
+  jint boundedCount = count < arrayLength ? count : arrayLength;
+  jbyte* bytes = env->GetByteArrayElements(json, nullptr);
+  if (bytes == nullptr) {
+    return 0;
+  }
+
+  jint accepted = accessibilityAction(
+    static_cast<int64_t>(handle),
+    reinterpret_cast<const uint8_t*>(bytes),
+    static_cast<int32_t>(boundedCount)
+  );
+  env->ReleaseByteArrayElements(json, bytes, JNI_ABORT);
+  return accepted;
+}
+
 const JNINativeMethod kMethods[] = {
   {"createHost", "()J", reinterpret_cast<void*>(nativeCreateHost)},
   {"start", "(J)V", reinterpret_cast<void*>(nativeStart)},
@@ -340,6 +370,7 @@ const JNINativeMethod kMethods[] = {
   {"copyClipboardText", "(J[BI)I", reinterpret_cast<void*>(nativeCopyClipboardText)},
   {"sendInput", "(J[BI)V", reinterpret_cast<void*>(nativeSendInput)},
   {"declareCapabilities", "(J[BI)I", reinterpret_cast<void*>(nativeDeclareCapabilities)},
+  {"accessibilityAction", "(J[BI)I", reinterpret_cast<void*>(nativeAccessibilityAction)},
   {"requestResync", "(J[BI)I", reinterpret_cast<void*>(nativeRequestResync)},
 };
 

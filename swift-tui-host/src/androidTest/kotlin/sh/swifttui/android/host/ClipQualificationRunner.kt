@@ -11,14 +11,20 @@ import android.os.SystemClock
 
 /** Manual, device-backed qualification of the real renderer's cell paint loop. */
 class ClipQualificationRunner : Instrumentation() {
+  private var accessibility = false
   override fun onCreate(arguments: Bundle?) {
+    accessibility = arguments?.getString("qualification") == "accessibility"
     super.onCreate(arguments)
     start()
   }
 
   override fun onStart() {
     try {
-      val result = qualify()
+      val result = if (accessibility) {
+        var result = ""
+        runOnMainSync { result = qualifyAccessibility(targetContext) }
+        result
+      } else qualify()
       finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "\nCLIP-QUALIFICATION $result\n") })
     } catch (error: Throwable) {
       finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", error.stackTraceToString()) })

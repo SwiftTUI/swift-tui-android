@@ -258,7 +258,8 @@ class SwiftTUIWebSurfaceSession {
       dirtyRows = textDamageRows.map { it.row }.distinct().sorted(),
       textDamageRows = textDamageRows,
       requiresFullTextRepaint = damage?.optBoolean("requiresFullTextRepaint", true) ?: true,
-      requiresFullGraphicsReplay = damage?.optBoolean("requiresFullGraphicsReplay", true) ?: true
+      requiresFullGraphicsReplay = damage?.optBoolean("requiresFullGraphicsReplay", true) ?: true,
+      accessibilityActionResponse = record.optJSONObject("accessibilityActionResponse")?.toAccessibilityActionResponse()
     ).also { consumedGeneration = nextConsumedGeneration }
   }
 
@@ -436,7 +437,17 @@ private fun JSONObject.toWebAccessibilityNode(): SwiftTUIAccessibilityNode =
     hidden = optBoolean("hidden"),
     liveRegion = optionalStringWeb("liveRegion"),
     cursorAnchor = optJSONArray("cursorAnchor")?.toWebPoint(),
-    isFocused = optBoolean("isFocused")
+    isFocused = optBoolean("isFocused"),
+    actionTarget = optionalStringWeb("actionTarget"),
+    actions = optJSONArray("actions")?.let { a ->
+      (0 until a.length()).mapNotNull { a.opt(it) as? String }.toSet()
+    } ?: emptySet(),
+    isEnabled = optBoolean("isEnabled", true),
+    value = if (optString("role") == "secureField") null else optJSONObject("value")?.toAccessibilityValue(),
+    valueMin = (opt("valueMin") as? Number)?.toDouble()?.takeIf { it.isFinite() },
+    valueMax = (opt("valueMax") as? Number)?.toDouble()?.takeIf { it.isFinite() },
+    valueStep = (opt("valueStep") as? Number)?.toDouble()?.takeIf { it.isFinite() }
+
   )
 
 private fun JSONObject.toWebScrollRegion(): SwiftTUIScrollRegion =

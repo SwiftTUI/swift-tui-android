@@ -31,6 +31,7 @@ class SwiftTUIHostState internal constructor(
     private set
 
   private var handle by mutableLongStateOf(0L)
+  private var nextAccessibilityRequestID = 0L
   private var lastResize: HostResize? = null
   private val missingImagePayloadIds = linkedSetOf<String>()
   private val webSurfaceSession = SwiftTUIWebSurfaceSession()
@@ -55,6 +56,7 @@ class SwiftTUIHostState internal constructor(
     // session's delta baseline resets with the scene.
     missingImagePayloadIds.clear()
     framePoller.reset()
+    frame = null
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
     SwiftTUIJni.start(handle)
@@ -70,6 +72,7 @@ class SwiftTUIHostState internal constructor(
   fun destroy() {
     val currentHandle = handle
     handle = 0L
+    frame = null
     lastResize = null
     missingImagePayloadIds.clear()
     if (currentHandle != 0L) {
@@ -113,6 +116,16 @@ class SwiftTUIHostState internal constructor(
     if (currentHandle != 0L && bytes.isNotEmpty()) {
       SwiftTUIJni.sendInput(currentHandle, bytes, bytes.size)
     }
+  }
+
+  /** Returns queue acceptance; the frame response carries runtime acceptance. */
+  fun sendAccessibilityAction(request: SwiftTUIAccessibilityActionRequest): Boolean {
+    val currentHandle = handle
+    val node = frame?.accessibilityNodes?.firstOrNull { it.actionTarget == request.target }
+    if (currentHandle == 0L || node == null || node.hidden || !node.isEnabled ||
+      request.action !in node.actions) return false
+    val bytes = request.encode(++nextAccessibilityRequestID) ?: return false
+    return SwiftTUIJni.accessibilityAction(currentHandle, bytes, bytes.size) == 1
   }
 
   internal fun reportMissingImagePayload(id: String) {

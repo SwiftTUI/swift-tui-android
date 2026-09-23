@@ -59,7 +59,7 @@ val defaultAndroidSdkDir = if (
 val defaultAndroidNdkDir = providers.environmentVariable("ANDROID_HOME")
   .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
   .orElse(defaultAndroidSdkDir)
-  .map { "$it/ndk/27.3.13750724" }
+  .map { "$it/ndk/30.0.16248370" }
 val swiftAndroidRoot = providers.environmentVariable("SWIFT_ANDROID_ROOT")
   .orElse(defaultSwiftAndroidRoot)
 val swiftAndroidNdkDir = providers.environmentVariable("ANDROID_NDK_HOME")

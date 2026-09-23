@@ -2,7 +2,7 @@
 
 ## Toolchains
 
-The Android SDK plus NDK `27.3.13750724` (`minSdk 28`) build the JNI shim;
+The Android SDK plus NDK `30.0.16248370` (`minSdk 28`) build the JNI shim;
 Swift 6.4.x with the Swift Android SDK cross-compiles the host `.so`. The
 repository does not vendor these toolchains.
 
@@ -41,3 +41,8 @@ Versions are lockstep with the SwiftTUI org; the coordination root owns the
 release sequence. Publication currently targets the GitHub Pages Maven
 repository (`swifttui.github.io/swift-tui-android`) as the interim
 distribution channel.
+
+The Swift 6.4 Android runtime requires NDK 30's C++ shared runtime. NDK 27
+can compile the JNI shim but fails to load `libswiftCore.so` because
+`std::__ndk1::__hash_memory` is missing. Keep the plugin's packaged
+`libc++_shared.so` and Swift SDK sysroot on the same NDK installation.

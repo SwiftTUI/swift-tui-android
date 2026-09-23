@@ -139,7 +139,14 @@ data class SwiftTUIAccessibilityNode(
   val hidden: Boolean,
   val liveRegion: String?,
   val cursorAnchor: SwiftTUIPoint?,
-  val isFocused: Boolean
+  val isFocused: Boolean,
+  val actionTarget: String? = null,
+  val actions: Set<String> = emptySet(),
+  val isEnabled: Boolean = true,
+  val value: SwiftTUIAccessibilityValue? = null,
+  val valueMin: Double? = null,
+  val valueMax: Double? = null,
+  val valueStep: Double? = null
 )
 
 data class SwiftTUIAccessibilityAnnouncement(
@@ -183,7 +190,8 @@ data class SwiftTUIFrame(
   val dirtyRows: List<Int>,
   val textDamageRows: List<SwiftTUITextDamageRow>,
   val requiresFullTextRepaint: Boolean,
-  val requiresFullGraphicsReplay: Boolean
+  val requiresFullGraphicsReplay: Boolean,
+  val accessibilityActionResponse: SwiftTUIAccessibilityActionResponse? = null
 ) {
   // A decoded frame is retained unchanged while Compose paints it. Index once
   // so partial paints do not rescan the entire surface for each damaged row.

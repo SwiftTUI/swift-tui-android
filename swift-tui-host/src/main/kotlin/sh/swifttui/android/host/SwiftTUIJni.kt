@@ -21,5 +21,6 @@ internal object SwiftTUIJni {
   external fun requestResync(handle: Long, json: ByteArray, count: Int): Int
   external fun copyLatestFrame(handle: Long, outBuffer: ByteArray?, capacity: Int): Int
   external fun copyClipboardText(handle: Long, outBuffer: ByteArray?, capacity: Int): Int
+  external fun accessibilityAction(handle: Long, input: ByteArray, count: Int): Int
   external fun sendInput(handle: Long, input: ByteArray, count: Int)
 }
