@@ -1,0 +1,64 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "sh.swifttui",
+    "module": "android-plugin",
+    "version": "0.15.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.15.1.jar",
+          "url": "android-plugin-0.15.1.jar",
+          "size": 64223,
+          "sha512": "e8b8902913ec30fccc3ec20ab7f4ce653c7fa8d5fac1b266ae0f633e79cc6bd1ec66d120dc0e3b187c3cb5698de7dfd6fb5cf8068e1aadb8560e561c1dc6b56d",
+          "sha256": "4e138001cd8a55f7a06633d850d851916a709f905cc6c19fea2a7a242aac5415",
+          "sha1": "23d7a69bf66aa823125b9f790bfed24212ed09cc",
+          "md5": "bd4ebb22c092187f1419750989e25636"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.15.1.jar",
+          "url": "android-plugin-0.15.1.jar",
+          "size": 64223,
+          "sha512": "e8b8902913ec30fccc3ec20ab7f4ce653c7fa8d5fac1b266ae0f633e79cc6bd1ec66d120dc0e3b187c3cb5698de7dfd6fb5cf8068e1aadb8560e561c1dc6b56d",
+          "sha256": "4e138001cd8a55f7a06633d850d851916a709f905cc6c19fea2a7a242aac5415",
+          "sha1": "23d7a69bf66aa823125b9f790bfed24212ed09cc",
+          "md5": "bd4ebb22c092187f1419750989e25636"
+        }
+      ]
+    }
+  ]
+}
