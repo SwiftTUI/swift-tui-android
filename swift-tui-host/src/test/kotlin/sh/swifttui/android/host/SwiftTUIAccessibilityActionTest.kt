@@ -31,7 +31,7 @@ class SwiftTUIAccessibilityActionTest {
     val frame = SwiftTUIWebSurfaceSession().decode(fixture)!!
     val node = frame.accessibilityNodes.single()
     assertEquals("fixture-token", node.actionTarget)
-    assertEquals(setOf("focus", "setValue"), node.actions)
+    assertEquals(setOf("focus", "setValue", "custom"), node.actions)
     assertFalse(node.isEnabled)
     assertEquals(SwiftTUIAccessibilityValue.TextValue("Current"), node.value)
     assertEquals(0.0, node.valueMin!!, 0.0)
