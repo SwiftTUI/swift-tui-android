@@ -39,8 +39,7 @@ jobs:
       # Provides Gradle distribution + dependency caching keyed on the wrapper
       # and lockfile state.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       # ANDROID_HOME comes preconfigured on the runner image; the native gate
       # honors it and hard-fails (never skips) when the SDK is missing.
       - name: Run native gate
