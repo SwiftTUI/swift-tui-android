@@ -3,8 +3,8 @@
   <groupId>sh.swifttui</groupId>
   <artifactId>android-host</artifactId>
   <versioning>
-    <latest>0.19.0</latest>
-    <release>0.19.0</release>
+    <latest>0.19.2</latest>
+    <release>0.19.2</release>
     <versions>
       <version>0.14.0</version>
       <version>0.15.0</version>
@@ -16,7 +16,8 @@
       <version>0.18.2</version>
       <version>0.18.3</version>
       <version>0.19.0</version>
+      <version>0.19.2</version>
     </versions>
-    <lastUpdated>20261021160350</lastUpdated>
+    <lastUpdated>20261024211040</lastUpdated>
   </versioning>
 </metadata>
