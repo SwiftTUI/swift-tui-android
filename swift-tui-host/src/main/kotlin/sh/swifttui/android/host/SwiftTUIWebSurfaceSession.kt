@@ -152,8 +152,14 @@ class SwiftTUIWebSurfaceSession {
     for (index in 0 until deltaRows.length()) {
       val entry = deltaRows.optJSONArray(index) ?: return refuseDelta(carriesBaselineStamp)
       val row = entry.optInt(0, -1)
-      if (row < 0 || row >= height || row >= rows.size) {
+      if (row < 0 || row >= height) {
         return refuseDelta(carriesBaselineStamp)
+      }
+      // A full frame may omit trailing empty rows, so an in-grid row can lie
+      // past the retained arrays. Materialize those omitted rows as empty
+      // (bounded by the admitted height) before replacing this one.
+      while (rows.size <= row) {
+        rows.add(emptyList())
       }
       rows[row] = parseCellTuples(row, entry.optJSONArray(1))
     }

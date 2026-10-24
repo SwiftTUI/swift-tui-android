@@ -34,25 +34,6 @@ class AdversarialA1ImeTest(private val id: String, private val scenario: Int) {
       15 -> Triple("abcd", "acd", "\u007F\u007F\u007Fcd")
       else -> error(id)
     }
-    val actual = SwiftTUIIme.bytesForEdit(old, new)
-    if (scenario !in 6..11 || System.getenv("SWIFTTUI_A1_UNMARKED") == "1") {
-      assertArrayEquals(id, expected.encodeToByteArray(), actual)
-    } else {
-      // STUI-1183, the committed-text part of STUI-135. Qualify the exact
-      // observed output before guarding only the correct byte expectation.
-      val observed = when (scenario) {
-        6, 8 -> "\u007F\u007F"
-        7 -> "\u007F\u007F\u007F\u007F"
-        9 -> "\u007F\u007F\u007F\u007F\u007F"
-        10 -> "\u007F?"
-        11 -> "\u007F\u0300"
-        else -> error(id)
-      }
-      assertArrayEquals("$id exact known output", observed.encodeToByteArray(), actual)
-      assertThrows(AssertionError::class.java) {
-        assertArrayEquals(id, expected.encodeToByteArray(), actual)
-      }
-      println("A1_KNOWN_ASSERTION $id STUI-1183")
-    }
+    assertArrayEquals(id, expected.encodeToByteArray(), SwiftTUIIme.bytesForEdit(old, new))
   }
 }

@@ -532,6 +532,97 @@ class SwiftTUIWebSurfaceSessionTest {
   }
 
   @Test
+  fun deltasPopulateAndClearTrailingRowsOmittedByTheFullBaseline() {
+    // HOST-WIRE-CONTRACT "Admitted raster rows": a full frame may omit trailing
+    // empty rows, and a later delta may populate or explicitly clear any
+    // in-grid row, as the browser decoder accepts (X1-026, X1-027; STUI-1144).
+    val baseline = surface(
+      """{"version":1,"width":4,"height":2,"styles":[null],"rows":[[[0,"A",1,0]]],""" +
+        """"epoch":700,"gen":1}"""
+    )
+    val populate = surface(
+      """{"version":3,"encoding":"delta","width":4,"height":2,"styles":[null],""" +
+        """"deltaRows":[[1,[[0,"B",1,0]]]],"epoch":700,"gen":2,"baselineGen":1}"""
+    )
+    val clear = surface(
+      """{"version":3,"encoding":"delta","width":4,"height":2,"styles":[null],""" +
+        """"deltaRows":[[1,[]]],"epoch":700,"gen":2,"baselineGen":1}"""
+    )
+    val unstampedBaseline = surface(
+      """{"version":2,"width":1,"height":3,"styles":[null],"rows":[[[0,"A",1,0]]]}"""
+    )
+    val unstampedDelta = surface(
+      """{"version":3,"encoding":"delta","width":1,"height":3,"styles":[null],""" +
+        """"deltaRows":[[2,[[0,"C",1,0]]]]}"""
+    )
+
+    val expected: List<Pair<List<Triple<Int, Int, String>>?, String?>> = listOf(
+      listOf(Triple(0, 0, "A"), Triple(1, 0, "B")) to null,
+      listOf(Triple(0, 0, "A")) to null,
+      listOf(Triple(0, 0, "A"), Triple(2, 0, "C")) to null
+    )
+    assertEquals(
+      expected,
+      listOf(
+        replay(baseline, populate),
+        replay(baseline, clear),
+        replay(unstampedBaseline, unstampedDelta)
+      )
+    )
+  }
+
+  @Test
+  fun omittedRowDeltasApplyOutOfOrderAndBecomeTheNextBaseline() {
+    val baseline = surface(
+      """{"version":2,"epoch":7,"gen":1,"width":1,"height":4,"styles":[null],""" +
+        """"rows":[[[0,"A",1,0]]]}"""
+    )
+    val unordered = surface(
+      """{"version":3,"encoding":"delta","epoch":7,"gen":2,"baselineGen":1,"width":1,""" +
+        """"height":4,"styles":[null],"deltaRows":[[3,[[0,"Z",1,0]]],[1,[[0,"Y",1,0]]]]}"""
+    )
+    val clearLast = surface(
+      """{"version":3,"encoding":"delta","epoch":7,"gen":3,"baselineGen":2,"width":1,""" +
+        """"height":4,"styles":[null],"deltaRows":[[3,[]]]}"""
+    )
+
+    val expected: List<Pair<List<Triple<Int, Int, String>>?, String?>> = listOf(
+      listOf(Triple(0, 0, "A"), Triple(1, 0, "Y"), Triple(3, 0, "Z")) to null,
+      listOf(Triple(0, 0, "A"), Triple(1, 0, "Y")) to null
+    )
+    assertEquals(
+      expected,
+      listOf(replay(baseline, unordered), replay(baseline, unordered, clearLast))
+    )
+  }
+
+  @Test
+  fun deltaRowsOutsideTheGridStayRefusedWhenTheBaselineOmitsRows() {
+    val baseline = surface(
+      """{"version":2,"epoch":7,"gen":1,"width":1,"height":2,"styles":[null],""" +
+        """"rows":[[[0,"A",1,0]]]}"""
+    )
+    fun delta(row: Int, baselineGeneration: Int) = surface(
+      """{"version":3,"encoding":"delta","epoch":7,"gen":2,""" +
+        """"baselineGen":$baselineGeneration,"width":1,"height":2,"styles":[null],""" +
+        """"deltaRows":[[$row,[[0,"X",1,0]]]]}"""
+    )
+
+    // Row == height, a negative row, and an omitted row behind a stale stamp.
+    val keyframe = SwiftTUIWebSurfaceSession.KEYFRAME_RESYNC_SCOPE
+    val expected: List<Pair<List<Triple<Int, Int, String>>?, String?>> =
+      List(3) { null to keyframe }
+    assertEquals(
+      expected,
+      listOf(
+        replay(baseline, delta(row = 2, baselineGeneration = 1)),
+        replay(baseline, delta(row = -1, baselineGeneration = 1)),
+        replay(baseline, delta(row = 1, baselineGeneration = 5))
+      )
+    )
+  }
+
+  @Test
   fun stampedInapplicableDeltasRequestKeyframeRepair() {
     val session = SwiftTUIWebSurfaceSession()
     val stamped = deltaRecord(
@@ -666,6 +757,26 @@ class SwiftTUIWebSurfaceSessionTest {
     assertTrue(image.payloadBase64 != null)
     assertEquals(SwiftTUIPixelSize(2, 2), image.pixelSize)
     assertEquals("fit", image.scalingMode)
+  }
+
+  private fun surface(json: String): String = prefix + json + "\n"
+
+  /**
+   * Decodes [records] in a fresh session and observes the last record: its
+   * sorted explicit cells as (row, column, text), or null when refused, plus
+   * the session's outstanding resync scope.
+   */
+  private fun replay(vararg records: String): Pair<List<Triple<Int, Int, String>>?, String?> {
+    val session = SwiftTUIWebSurfaceSession()
+    var last: SwiftTUIFrame? = null
+    for (record in records) {
+      last = session.decode(record)
+    }
+    val cells = last?.cells
+      ?.filterNot { it.isContinuation }
+      ?.sortedWith(compareBy({ it.y }, { it.x }))
+      ?.map { Triple(it.y, it.x, it.character) }
+    return cells to session.pendingResyncScope
   }
 
   private fun fullRecord(

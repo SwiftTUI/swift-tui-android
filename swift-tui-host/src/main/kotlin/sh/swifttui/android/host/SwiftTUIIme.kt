@@ -1,5 +1,8 @@
 package sh.swifttui.android.host
 
+import java.text.BreakIterator
+import java.util.Locale
+
 /**
  * Pure, Android-free translation of soft-keyboard (IME) edits into terminal
  * input bytes.
@@ -21,6 +24,11 @@ object SwiftTUIIme {
    * - A replacement (selection edit) → DELs for the removed tail, then the
    *   inserted suffix, so the runtime's text reducer ends in the same state.
    *
+   * A "character" is an extended grapheme cluster, the unit the runtime's
+   * reducer deletes (a Swift `Character`), not a UTF-16 unit. The kept prefix
+   * ends on a character boundary of [old], so an edited character is deleted
+   * and re-sent whole, as complete UTF-8.
+   *
    * Newlines are normalized to carriage returns, which the text-input reducer
    * treats as submit/return.
    */
@@ -30,8 +38,20 @@ object SwiftTUIIme {
     }
 
     val shared = commonPrefixLength(old, new)
-    val removed = old.length - shared
-    val insertedSuffix = new.substring(shared)
+    val boundaries = BreakIterator.getCharacterInstance(Locale.ROOT)
+    boundaries.setText(old)
+    var kept = 0
+    var removed = 0
+    var boundary = boundaries.next()
+    while (boundary != BreakIterator.DONE) {
+      if (boundary <= shared) {
+        kept = boundary
+      } else {
+        removed++
+      }
+      boundary = boundaries.next()
+    }
+    val insertedSuffix = new.substring(kept)
 
     val output = ArrayList<Byte>(removed + insertedSuffix.length)
     repeat(removed) { output.add(BACKSPACE) }

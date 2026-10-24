@@ -4,7 +4,10 @@
 
 The Android SDK plus NDK `30.0.16248370` (`minSdk 28`) build the JNI shim;
 Swift 6.4.x with the Swift Android SDK cross-compiles the host `.so`. The
-repository does not vendor these toolchains.
+repository does not vendor these toolchains. Run the JVM unit tests on JDK 21,
+as CI does: the IME tests rely on `java.text.BreakIterator` returning extended
+grapheme clusters, which JDKs before 20 do not. On a device, the platform ICU
+supplies those boundaries.
 
 ## Build & test
 
