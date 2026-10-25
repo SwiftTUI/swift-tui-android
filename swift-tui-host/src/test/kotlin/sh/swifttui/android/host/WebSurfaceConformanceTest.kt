@@ -14,7 +14,7 @@ class WebSurfaceConformanceTest {
   fun fullMirrorPassesRawByteHashSchemaApplicabilityAndCensusValidation() {
     val corpus = WebSurfaceConformanceLoader.load()
 
-    assertEquals(10, corpus.entries.size)
+    assertEquals(12, corpus.entries.size)
     assertEquals(
       setOf(
         "android-delivery-commits-copied-candidate",
@@ -24,6 +24,8 @@ class WebSurfaceConformanceTest {
         "canvas-decode-failure-retries-deterministically",
         "image-forget-requests-and-reapplies",
         "web-painter-image-forget-requests-and-reapplies",
+        "non-json-style-number-refused-before-clean-keyframe",
+        "delta-populates-and-clears-omitted-trailing-row",
         "style-append-splices-onto-the-retained-table",
         "unknown-token-degrades-per-record",
         "websocket-detached-backlog-reconnects-by-token"
@@ -55,6 +57,8 @@ class WebSurfaceConformanceTest {
         "control-steady-delta",
         "epoch-reanchor-and-style-budget-full",
         "image-forget-requests-and-reapplies",
+        "non-json-style-number-refused-before-clean-keyframe",
+        "delta-populates-and-clears-omitted-trailing-row",
         "style-append-splices-onto-the-retained-table",
         "unknown-token-degrades-per-record"
       ),

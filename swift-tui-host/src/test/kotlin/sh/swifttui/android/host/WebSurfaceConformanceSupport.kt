@@ -92,7 +92,11 @@ internal object WebSurfaceConformanceLoader {
       setOf("websocket-channel"),
       setOf("swift-websocket-channel")
     ),
-    "style-append" to MutationContract("s3d", setOf("record"), kindRunners.getValue("record"))
+    "style-append" to MutationContract("s3d", setOf("record"), kindRunners.getValue("record")),
+    // The only class whose emitted surface payload may fail strict JSON
+    // parsing. org.json's lenient tokener still reads it as an object, so
+    // framing validation is unchanged. The production decoder must refuse it.
+    "non-json-number" to MutationContract("s1", setOf("record"), kindRunners.getValue("record"))
   )
 
   fun load(
