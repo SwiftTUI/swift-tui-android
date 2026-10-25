@@ -129,6 +129,41 @@ class SwiftTUIFramePollerTest {
   }
 
   @Test
+  fun nonJsonTokenRecordKeepsTheLastFrameAndRequestsOneKeyframe() {
+    // STUI-1145: a NaN or Infinity record is refused before parsing, like any
+    // other lexical refusal. The last frame stays published, one keyframe
+    // repair is requested, and the next full frame recovers.
+    val native = FakeFrameNative()
+    val poller = native.makePoller()
+    fun styled(header: String, rows: String, opacity: String): String =
+      prefix + """{$header,"width":1,"height":1,"styles":[null,{"opacity":$opacity}],$rows}""" + "\n"
+    val records = listOf(
+      fullRecord(sequence = 1, epoch = 71, generation = 1, text = "A"),
+      styled(""""version":2,"epoch":71,"gen":2,"sequence":2""", """"rows":[[[0,"N",1,1]]]""", "NaN"),
+      styled(
+        """"version":3,"encoding":"delta","epoch":71,"gen":3,"baselineGen":2,"sequence":3""",
+        """"deltaRows":[[0,[[0,"I",1,1]]]]""",
+        "Infinity"
+      ),
+      fullRecord(sequence = 4, epoch = 71, generation = 3, text = "K"),
+      deltaRecord(sequence = 5, epoch = 71, generation = 4, baselineGeneration = 3, text = "R")
+    )
+
+    val observed = records.map { record ->
+      native.enqueue(record)
+      when (val result = poller.poll(5)) {
+        is SwiftTUIFramePollResult.Frame -> "Frame:" + result.value.cells.single().character
+        else -> result.toString()
+      }
+    }
+
+    assertEquals(
+      listOf("Frame:A", "None", "None", "Frame:K", "Frame:R") to listOf("""{"scope":"keyframe"}"""),
+      observed to native.resyncRequests
+    )
+  }
+
+  @Test
   fun partialStampedFrameFailsAtomicallyAndRequestsOneKeyframe() {
     val native = FakeFrameNative()
     val poller = native.makePoller()

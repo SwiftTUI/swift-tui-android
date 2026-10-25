@@ -43,12 +43,22 @@ internal object SwiftTUIWireBudget {
     return true
   }
 
+  /**
+   * Lexical admission of a JSON payload before org.json parses it: nesting
+   * depth, plus the JSON token grammar outside strings. org.json is lenient
+   * and would read non-JSON runs such as `NaN`, `Infinity`, `+1`, `0x10`,
+   * `TRUE` or unquoted words as values, which browser `JSON.parse` rejects.
+   * Every bare run must be `true`, `false`, `null` or an RFC 8259 number,
+   * delimited by structural characters or the four JSON whitespace
+   * characters. This is syntax only: `1e400` is a valid number.
+   */
   fun depth(text: String): Boolean {
     var depth = 0
     var quoted = false
     var escaped = false
-    var primitive = false
-    for (c in text) {
+    var token = -1 // Start of the bare run being scanned, or -1.
+    for (index in text.indices) {
+      val c = text[index]
       if (quoted) {
         if (escaped) escaped = false
         else if (c == '\\') escaped = true
@@ -56,22 +66,59 @@ internal object SwiftTUIWireBudget {
       } else if (c == '"') {
         // Android's lenient JSONTokener accepts quotes inside unquoted
         // literals. Such a quote must not hide later nesting from this scan.
-        if (primitive) return false
+        if (token >= 0) return false
         quoted = true
       } else if (c == '\'' || c == '/' || c == '#') {
         // Single-quoted strings and comments are outside the JSON wire
         // contract and can contain quotes that disagree with this scanner.
         return false
-      } else if (c == '[' || c == '{') {
-        primitive = false
-        if (++depth > JSON_DEPTH) return false
-      } else if (c == ']' || c == '}') {
-        primitive = false
-        if (--depth < 0) return false
-      } else if (c == ':' || c == ',' || c.isWhitespace()) primitive = false
-      else primitive = true
+      } else if (c == '[' || c == '{' || c == ']' || c == '}' || c == ':' || c == ',' ||
+        c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        if (token >= 0 && !bareToken(text, token, index)) return false
+        token = -1
+        if (c == '[' || c == '{') {
+          if (++depth > JSON_DEPTH) return false
+        } else if (c == ']' || c == '}') {
+          if (--depth < 0) return false
+        }
+      } else if (token < 0) token = index
     }
-    return true
+    return token < 0 || bareToken(text, token, text.length)
+  }
+
+  /** Whether `text[start, end)` is exactly a JSON literal name or RFC 8259 §6 number. */
+  private fun bareToken(text: String, start: Int, end: Int): Boolean {
+    when (end - start) {
+      4 -> if (text.startsWith("true", start) || text.startsWith("null", start)) return true
+      5 -> if (text.startsWith("false", start)) return true
+    }
+    fun digitsFrom(from: Int): Int {
+      var index = from
+      while (index < end && text[index] in '0'..'9') index++
+      return index
+    }
+    // -? (0 | [1-9][0-9]*) (\.[0-9]+)? ([eE][+-]?[0-9]+)?
+    var index = if (text[start] == '-') start + 1 else start
+    if (index < end && text[index] == '0') {
+      index++
+    } else {
+      val integerEnd = digitsFrom(index)
+      if (integerEnd == index) return false
+      index = integerEnd
+    }
+    if (index < end && text[index] == '.') {
+      val fractionEnd = digitsFrom(index + 1)
+      if (fractionEnd == index + 1) return false
+      index = fractionEnd
+    }
+    if (index < end && (text[index] == 'e' || text[index] == 'E')) {
+      var exponent = index + 1
+      if (exponent < end && (text[exponent] == '+' || text[exponent] == '-')) exponent++
+      val exponentEnd = digitsFrom(exponent)
+      if (exponentEnd == exponent) return false
+      index = exponentEnd
+    }
+    return index == end
   }
 
   // Eight units per JSON value, plus UTF-8 bytes in keys and string values.

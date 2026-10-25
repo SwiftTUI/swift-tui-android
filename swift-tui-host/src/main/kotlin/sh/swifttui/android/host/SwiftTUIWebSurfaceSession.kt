@@ -73,10 +73,15 @@ class SwiftTUIWebSurfaceSession {
   fun decode(payload: String): SwiftTUIFrame? {
     require(payload.startsWith(RECORD_PREFIX)) { "not a web-surface record" }
     val byteLimit = SwiftTUIWireBudget.RECORD_BYTES + if (payload.endsWith('\n')) 1 else 0
-    if (!SwiftTUIWireBudget.fitsUTF8(payload, byteLimit) || !SwiftTUIWireBudget.depth(payload)) {
+    if (!SwiftTUIWireBudget.fitsUTF8(payload, byteLimit)) {
       return refuseDelta(shouldRequestKeyframe = true)
     }
-    val record = JSONObject(payload.removePrefix(RECORD_PREFIX).trimEnd('\n'))
+    // Scan exactly the JSON text that org.json parses; the record name is not JSON.
+    val json = payload.removePrefix(RECORD_PREFIX).trimEnd('\n')
+    if (!SwiftTUIWireBudget.depth(json)) {
+      return refuseDelta(shouldRequestKeyframe = true)
+    }
+    val record = JSONObject(json)
     val version = record.optInt("version", 0)
     require(version <= SUPPORTED_WEB_SURFACE_VERSION) {
       "web-surface version $version is newer than the supported " +

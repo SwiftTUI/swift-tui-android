@@ -93,6 +93,153 @@ class SwiftTUIWireBudgetTest {
   }
 
   @Test
+  fun nonJsonNumericTokensAreRefusedBeforeRetention() {
+    // HOST-WIRE-CONTRACT: a surface payload is a JSON object, and RFC 8259 §6
+    // numbers have no NaN or Infinity. The browser decoders and the Swift
+    // reference reject these records, which org.json would otherwise coerce
+    // (X1-053, X1-054; STUI-1145).
+    val refused = Admission(accepted = false, opacity = null, resync = "keyframe")
+    val x1 = listOf("NaN", "Infinity").map { token ->
+      val session = SwiftTUIWebSurfaceSession()
+      val frame = session.decode(
+        surface(
+          """{"version":1,"width":4,"height":1,"styles":[null,{"opacity":$token,"fg":"#FFFFFFFF"}],""" +
+            """"rows":[[[0,"B",1,1]]],"epoch":700,"gen":1}"""
+        )
+      )
+      token to Admission(frame != null, frame?.cells?.single()?.style?.opacity, session.pendingResyncScope)
+    }
+    val tokens = listOf("NaN", "Infinity", "-Infinity", "nan", "+1", ".5", "1.", "01", "0x10", "1.5f", "1d")
+    // A stamped delta is refused the same way. While that keyframe repair is
+    // pending, a valid delta naming the retained baseline does not apply.
+    fun delta(opacity: String) = surface(
+      """{"version":3,"encoding":"delta","epoch":7,"gen":2,"baselineGen":1,"width":1,"height":2,""" +
+        """"styles":[null,{"opacity":$opacity}],"deltaRows":[[0,[[0,"b",1,1]]]]}"""
+    )
+    assertEquals(
+      Triple(
+        listOf("NaN" to refused, "Infinity" to refused),
+        tokens.map { it to (listOf(refused) to 2L) },
+        listOf(refused, refused) to 2L
+      ),
+      Triple(
+        x1,
+        tokens.map { token -> token to admissions(styledFull(token)) },
+        admissions(delta("NaN"), delta("0.5"))
+      )
+    )
+  }
+
+  @Test
+  fun nonJsonTokensAreRefusedInEveryRecordPosition() {
+    // One lexical rule covers every value, including additive keys, and the
+    // remaining org.json extensions at that seam: unquoted keys and words,
+    // case variants of the literal names, and non-JSON whitespace.
+    val members = listOf(
+      """"images":[{"id":"i","format":"future","bounds":[0,0,0,0],"visibleBounds":[0,0,0,0],""" +
+        """"scalingMode":"stretch","opacity":NaN}]""",
+      """"accessibilityTree":[{"id":"n","rect":[Infinity,0,1,1],"role":"group"}]""",
+      """"future":NaN""",
+      """"future":{"ratio":[-Infinity]}""",
+      """future:1""",
+      """"future":TRUE""",
+      """"future":Null""",
+      """"future":abc""",
+      "\"future\":\u000C1",
+      "\"future\":true ",
+    )
+    val refused = Admission(accepted = false, opacity = null, resync = "keyframe")
+    assertEquals(
+      members.map { it to (listOf(refused) to 2L) },
+      members.map { member ->
+        member to admissions(
+          surface(
+            """{"version":2,"epoch":7,"gen":2,"width":1,"height":2,"styles":[null],""" +
+              """"rows":[[[0,"b",1,0]],[]],$member}"""
+          )
+        )
+      }
+    )
+  }
+
+  @Test
+  fun jsonNumbersLiteralsAndWhitespaceStayAdmitted() {
+    // Every RFC 8259 number form, including the producer's `1e-05` spelling.
+    val spellings = linkedMapOf(
+      "0.5" to 0.5, "5E-1" to 0.5, "5e-1" to 0.5, "0.5e0" to 0.5, "0.05E+1" to 0.5,
+      "1e-05" to 1e-5, "0" to 0.0, "-0" to 0.0, "1" to 1.0
+    )
+    for ((token, value) in spellings) {
+      val (observed, repairedGeneration) = admissions(styledFull(token))
+      val admission = observed.single()
+      assertTrue(token, admission.accepted)
+      assertEquals(token, value, requireNotNull(admission.opacity), 0.0)
+      assertNull(token, admission.resync)
+      assertEquals(token, 3L, repairedGeneration)
+    }
+    // Literal names and all four JSON whitespace characters, including CR LF.
+    val compact =
+      """{"version":2,"epoch":7,"gen":2,"width":1,"height":2,"styles":[null,{"opacity":0.5}],""" +
+        """"rows":[[[0,"b",1,1]],[]],"accessibilityTree":[{"id":"n","parentId":null,""" +
+        """"rect":[0,0,1,1],"role":"group","hidden":true,"isFocused":false}]}"""
+    val spaced = compact.replace("{", "{ ").replace("[", "[\t").replace(",", " ,\r\n").replace(":", "\t: ")
+    val frames = listOf(compact, spaced).map {
+      requireNotNull(SwiftTUIWebSurfaceSession().decode(surface(it)))
+    }
+    assertEquals(frames[0].cells, frames[1].cells)
+    assertEquals(frames[0].accessibilityNodes, frames[1].accessibilityNodes)
+    assertTrue(frames[1].accessibilityNodes.single().hidden)
+    // Token spellings inside strings stay ordinary content.
+    val content = SwiftTUIWebSurfaceSession().decode(
+      surface(
+        """{"version":2,"width":1,"height":1,"styles":[null],"rows":[[[0,"NaN",1,0]]],""" +
+          """"future":"NaN Infinity -Infinity 0x10 TRUE abc 1.5f \f /* # '"}"""
+      )
+    )
+    assertEquals("NaN", requireNotNull(content).cells.single().character)
+  }
+
+  @Test
+  fun overflowingJsonExponentStaysAdmitted() {
+    // X1-055: `1e400` is RFC 8259 number syntax. The contract states no
+    // consumer range policy, so lexical admission leaves it to the parser
+    // (the JVM org.json artifact retains Infinity; that probe stays uncounted).
+    val session = SwiftTUIWebSurfaceSession()
+    val frame = session.decode(
+      surface(
+        """{"version":1,"width":4,"height":1,"styles":[null,{"opacity":1e400,"fg":"#FFFFFFFF"}],""" +
+          """"rows":[[[0,"B",1,1]]],"epoch":700,"gen":1}"""
+      )
+    )
+    assertEquals("B", requireNotNull(frame).cells.single().character)
+    assertNull(session.pendingResyncScope)
+  }
+
+  private data class Admission(val accepted: Boolean, val opacity: Double?, val resync: String?)
+
+  private fun surface(json: String): String = SwiftTUIWebSurfaceSession.RECORD_PREFIX + json + "\n"
+
+  private fun styledFull(opacity: String): String = surface(
+    """{"version":2,"epoch":7,"gen":2,"width":1,"height":2,"styles":[null,{"opacity":$opacity}],""" +
+      """"rows":[[[0,"b",1,1]],[]]}"""
+  )
+
+  /**
+   * Decodes [records] over the stamped [base] baseline, observing each one,
+   * then decodes the baseline again and returns its consumed generation: 2
+   * means no record in between advanced the session.
+   */
+  private fun admissions(vararg records: String): Pair<List<Admission>, Long> {
+    val session = SwiftTUIWebSurfaceSession()
+    session.decode(wire(base()))
+    val observed = records.map { record ->
+      val frame = session.decode(record)
+      Admission(frame != null, frame?.cells?.firstOrNull()?.style?.opacity, session.pendingResyncScope)
+    }
+    return observed to requireNotNull(session.decode(wire(base()))).consumedGeneration
+  }
+
+  @Test
   fun oversizedSizeQueriesAndRetrySizesNeverAllocateOrRequestRepeatedly() {
     for (oversizedOnRetry in listOf(false, true)) {
       var copies = 0
