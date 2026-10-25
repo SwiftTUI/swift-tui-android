@@ -61,6 +61,34 @@ object SwiftTUIIme {
     return output.toByteArray()
   }
 
+  /**
+   * The IME buffer the host keeps after an edit: each CR LF pair and each lone
+   * CR becomes one LF, the newline the runtime's editor inserted for the one CR
+   * [bytesForEdit] sent. A buffer without CR is returned as is.
+   *
+   * [bytesForEdit] counts the characters of the buffer it diffs. A CR and an
+   * LF committed in separate edits reach the runtime as two Returns, but in a
+   * raw buffer they merge into one CR LF character, so deleting both would
+   * send one DEL. In the kept buffer every line break is one LF character, as
+   * in the runtime.
+   */
+  internal fun normalizedBuffer(text: String): String =
+    if (text.indexOf('\r') < 0) text else text.replace("\r\n", "\n").replace('\r', '\n')
+
+  /**
+   * The position in [normalizedBuffer] of [text] that [offset] in [text] names.
+   * An offset between a CR and its LF maps to before the LF that replaces them.
+   */
+  internal fun normalizedBufferOffset(text: String, offset: Int): Int {
+    var removed = 0
+    for (index in 0 until minOf(offset, text.length - 1)) {
+      if (text[index] == '\r' && text[index + 1] == '\n') {
+        removed++
+      }
+    }
+    return offset - removed
+  }
+
   private fun commonPrefixLength(a: String, b: String): Int {
     val limit = minOf(a.length, b.length)
     var index = 0

@@ -37,6 +37,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -245,7 +246,9 @@ fun SwiftTUIHostView(
             if (bytes.isNotEmpty()) {
               state.sendInput(bytes)
             }
-            imeValue = newValue
+            // Keep the buffer in the runtime's line breaks, so the next edit
+            // is diffed against the characters the runtime holds.
+            imeValue = normalizedImeValue(newValue)
           },
           enabled = prefersTextInput,
           keyboardOptions = KeyboardOptions(
@@ -289,6 +292,22 @@ fun SwiftTUIHostView(
       placeable.place(0, 0)
     }
   }
+}
+
+/**
+ * [value] with its text as [SwiftTUIIme.normalizedBuffer] and its selection and
+ * composition at the same positions; unchanged when the text has no CR.
+ */
+private fun normalizedImeValue(value: TextFieldValue): TextFieldValue {
+  val text = SwiftTUIIme.normalizedBuffer(value.text)
+  if (text == value.text) {
+    return value
+  }
+  fun range(raw: TextRange) = TextRange(
+    SwiftTUIIme.normalizedBufferOffset(value.text, raw.start),
+    SwiftTUIIme.normalizedBufferOffset(value.text, raw.end)
+  )
+  return TextFieldValue(text, range(value.selection), value.composition?.let { range(it) })
 }
 
 // Ctrl+V or Shift+Insert pastes the system clipboard as a bracketed paste,

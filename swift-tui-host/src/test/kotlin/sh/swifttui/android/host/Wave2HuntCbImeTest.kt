@@ -2,9 +2,7 @@ package sh.swifttui.android.host
 
 import java.text.BreakIterator
 import java.util.Locale
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
@@ -14,39 +12,28 @@ import org.junit.Test
  *
  * Each case replays IME buffer edits into [RuntimeEditor], a model of the
  * runtime's multi-line text editor: DEL deletes one character, every CR is one
- * Return (a newline), and other UTF-8 appends.
+ * Return (a newline), and other UTF-8 appends. w2cb009 and the wave-3 cases
+ * (STUI-1251) edit through [ImeHost], the buffer the host keeps.
  */
 class Wave2HuntCbImeTest {
-  private val unmarked = System.getenv("SWIFTTUI_W2HUNT_UNMARKED") == "1"
-
   @Test
   fun w2cb009CarriageReturnAndLineFeedFromSeparateEditsDeleteToTheBuffer() {
-    val editor = RuntimeEditor()
-    // A paste ending in CR, then Enter: the runtime receives two Returns while
-    // the buffer's CR and LF merge into one character.
-    editor.replay("", "a\r", "a\r\n")
-    assertEquals("a\n\n", editor.text)
-    val lastEdit = SwiftTUIIme.bytesForEdit("a\r\n", "a")
-    editor.receive(lastEdit)
-    if (unmarked) {
-      assertEquals("w2cb009", "a", editor.text)
-    } else {
-      // NEW-2: bytesForEdit counts characters of the IME buffer, where a CR
-      // and an LF from separate edits merge into one character, though the
-      // runtime received two Returns (adjacent STUI-1183). Qualify the exact
-      // observed output before guarding only the contract.
-      assertArrayEquals("w2cb009 exact known bytes", byteArrayOf(0x7F), lastEdit)
-      assertEquals("w2cb009 exact known output", "a\n", editor.text)
-      assertThrows(AssertionError::class.java) {
-        assertEquals("w2cb009", "a", editor.text)
-      }
-      println(
-        "W2HUNT_KNOWN_ASSERTION w2cb009 NEW-2: deleting a CR LF committed in separate edits " +
-          "sends one DEL and leaves a newline; the diff counts the merged buffer character; " +
-          "contract: SwiftTUIIme.bytesForEdit leaves the runtime reducer in the same state; " +
-          "adjacent STUI-1183"
-      )
-    }
+    // A paste ending in CR, then Enter: the runtime receives two Returns.
+    // STUI-1251 (fixed in wave 3): the host keeps them as two LF characters,
+    // so deleting both sends two DELs. The hunt replayed the raw buffers
+    // "a\r" and "a\r\n", where CR and LF merge into one character; the IME
+    // now edits the buffer the host keeps, so Enter appends to "a\n".
+    val host = ImeHost()
+    host.commit("a\r")
+    host.commit(host.buffer + "\n")
+    val afterEnter = host.editor.text
+    val bufferAfterEnter = host.buffer
+    val lastEdit = host.commit("a")
+    assertEquals(
+      "w2cb009",
+      listOf("a\n\n", "a\n\n", "7F 7F", "a"),
+      listOf(afterEnter, bufferAfterEnter, hex(lastEdit), host.editor.text)
+    )
   }
 
   @Test
@@ -99,6 +86,76 @@ class Wave2HuntCbImeTest {
     )
   }
 
+  // Wave 3 repair scenarios for STUI-1251: the reverse histories, each
+  // replayed through the host's buffer.
+
+  @Test
+  fun w3cbA01DeletionInsideASingleCommitCrlfSendsNoReturn() {
+    // (a) A CRLF pasted in one edit is one Return, kept as one LF; the IME
+    // deleting the one UTF-16 unit before the cursor removes it with one DEL.
+    val a = ImeHost()
+    val pasteA = a.commit("a\r\n")
+    val bufferA = a.buffer
+    val deleteA = a.commit(a.buffer.dropLast(1))
+    // (b) The unit before "b" in a pasted "a\r\nb" is the whole line break.
+    val b = ImeHost()
+    b.commit("a\r\nb")
+    val deleteB = b.commit(b.buffer.removeRange(b.buffer.length - 2, b.buffer.length - 1))
+    assertEquals(
+      listOf("61 0D", "a\n", "7F", "a", "a", "7F 7F 62", "ab", "ab"),
+      listOf(
+        hex(pasteA),
+        bufferA,
+        hex(deleteA),
+        a.editor.text,
+        a.buffer,
+        hex(deleteB),
+        b.editor.text,
+        b.buffer
+      )
+    )
+  }
+
+  @Test
+  fun w3cbA02CarriageReturnThenLineFeedThenACharacterStayInStep() {
+    val host = ImeHost()
+    val edits = listOf<(String) -> String>({ "a\r" }, { it + "\n" }, { it + "b" })
+    val observed = edits.map { edit ->
+      host.commit(edit(host.buffer))
+      host.editor.text to normalizedNewlines(host.buffer)
+    }
+    assertEquals(
+      listOf("a\n" to "a\n", "a\n\n" to "a\n\n", "a\n\nb" to "a\n\nb"),
+      observed
+    )
+  }
+
+  @Test
+  fun w3cbA04PastedCrlfHistoryThroughTheHostStaysInStep() {
+    // The w2cb011 history, each edit made to the buffer the host keeps.
+    val host = ImeHost()
+    val observed = mutableListOf<Pair<String, String>>()
+    fun record() {
+      observed += host.editor.text to normalizedNewlines(host.buffer)
+    }
+    host.commit("x\r\ny")
+    record()
+    host.deleteLastCharacter()
+    record()
+    host.deleteLastCharacter()
+    record()
+    host.commit(host.buffer + WOMAN)
+    record()
+    host.commit(host.buffer + ZWJ + LAPTOP)
+    record()
+    host.deleteLastCharacter()
+    record()
+    host.deleteLastCharacter()
+    record()
+    val expected = listOf("x\ny", "x\n", "x", "x$WOMAN", "x$WOMAN$ZWJ$LAPTOP", "x", "")
+    assertEquals(expected.map { it to it }, observed)
+  }
+
   private class Edit(val label: String, val old: String, val new: String, val expected: String)
 
   /**
@@ -106,7 +163,6 @@ class Wave2HuntCbImeTest {
    * buffer and then the edit, at once, so a failure reports each actual value.
    */
   private fun assertEdits(vararg edits: Edit) {
-    fun hex(bytes: ByteArray) = bytes.joinToString(" ") { "%02X".format(it) }
     assertEquals(
       edits.map { "${it.label}: ${hex(it.expected.encodeToByteArray())} -> ${it.new}" },
       edits.map {
@@ -117,6 +173,32 @@ class Wave2HuntCbImeTest {
         "${it.label}: ${hex(bytes)} -> ${editor.text}"
       }
     )
+  }
+
+  /**
+   * The host's invisible IME buffer, as `SwiftTUIHostView` keeps it: each IME
+   * edit is diffed against the buffer held, its bytes reach [editor], and the
+   * buffer kept is the edited one, normalized.
+   */
+  private class ImeHost {
+    val editor = RuntimeEditor()
+    var buffer = ""
+      private set
+
+    /** Applies the IME's next buffer and returns the bytes sent. */
+    fun commit(next: String): ByteArray {
+      val bytes = SwiftTUIIme.bytesForEdit(buffer, next)
+      editor.receive(bytes)
+      buffer = SwiftTUIIme.normalizedBuffer(next)
+      return bytes
+    }
+
+    /** The IME deleting the last character (grapheme cluster) of the buffer. */
+    fun deleteLastCharacter(): ByteArray {
+      val boundaries = BreakIterator.getCharacterInstance(Locale.ROOT)
+      boundaries.setText(buffer)
+      return commit(buffer.substring(0, boundaries.preceding(buffer.length)))
+    }
   }
 
   /** The runtime's multi-line editor fed by [SwiftTUIIme.bytesForEdit]. */
@@ -170,5 +252,7 @@ class Wave2HuntCbImeTest {
 
     fun normalizedNewlines(buffer: String): String =
       buffer.replace("\r\n", "\n").replace('\r', '\n')
+
+    fun hex(bytes: ByteArray) = bytes.joinToString(" ") { "%02X".format(it) }
   }
 }

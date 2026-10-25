@@ -2,6 +2,7 @@ package sh.swifttui.android.host
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class SwiftTUIImeTest {
@@ -75,6 +76,29 @@ class SwiftTUIImeTest {
       Edit("flag completion", "A$RI_C", "A$FLAG_CA", RI_A),
       Edit("ZWJ continuation", "A$WOMAN", "A$TECHNOLOGIST", "$ZWJ$LAPTOP"),
       Edit("combining mark", "e", "é", "́")
+    )
+  }
+
+  // The host keeps its IME buffer with every line break as one LF, the newline
+  // the runtime inserted for the one CR it received (STUI-1251).
+
+  @Test
+  fun normalizedBufferKeepsEachLineBreakAsOneLineFeed() {
+    assertEquals("a\nb\nc\n", SwiftTUIIme.normalizedBuffer("a\r\nb\rc\n"))
+    val plain = "plain\ntext"
+    assertSame(plain, SwiftTUIIme.normalizedBuffer(plain))
+  }
+
+  @Test
+  fun normalizedBufferOffsetsKeepTheirPosition() {
+    // Between CR and LF maps to before the LF that replaces the pair.
+    assertEquals(
+      listOf(0, 1, 1, 2, 3),
+      (0..4).map { SwiftTUIIme.normalizedBufferOffset("a\r\nb", it) }
+    )
+    assertEquals(
+      listOf(0, 1, 2, 3),
+      (0..3).map { SwiftTUIIme.normalizedBufferOffset("a\rb", it) }
     )
   }
 
