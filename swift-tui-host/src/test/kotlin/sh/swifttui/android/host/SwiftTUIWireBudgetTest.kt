@@ -1,6 +1,7 @@
 package sh.swifttui.android.host
 
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -215,9 +216,115 @@ class SwiftTUIWireBudgetTest {
     assertNull(session.pendingResyncScope)
   }
 
+  @Test
+  fun structuralJsonExtensionsAreRefusedInEveryRecordPosition() {
+    // RFC 8259 §4 and §5 (STUI-1277): keys are strings, and one separator
+    // stands between members and between elements. org.json would take a
+    // numeric or literal key as text, read `[1 2]` as one string, read an
+    // elided element as null and drop a trailing separator.
+    val members = listOf(
+      "1:2", "true:1", "null:1", "-0:1",
+      """"future":[1 2]""", """"future":[,]""", """"future":[1,,]""", """"future":[1,,2]""",
+      """"future":{"a":1,}""", """"future":[[],]""",
+    )
+    assertEquals(
+      members.map { it to ("refused keyframe" to 2L) },
+      members.map { it to outcome(surface("$FULL_BODY,$it}")) }
+    )
+  }
+
+  @Test
+  fun onlyJsonWhitespaceMayFollowTheSurfaceObject() {
+    // RFC 8259 §2: a JSON text is one value. org.json would commit the first
+    // object and ignore what follows it (STUI-1277). Stray closers were
+    // already refused by the nesting count.
+    val suffixes = listOf(",", ":", "1", "null", "\"x\"", "{", "[", "{}", " {\"a\":1}", "\n[]", "\r\n0", "}", "]")
+    assertEquals(
+      suffixes.map { it to ("refused keyframe" to 2L) },
+      suffixes.map { it to outcome(surface("$FULL_BODY}$it")) }
+    )
+  }
+
+  @Test
+  fun grammarViolationsAreRefusedBeforeTheParserRuns() {
+    // The same grammar check refuses malformed members that org.json rejects
+    // by throwing, so they take the refusal path rather than an exception.
+    val members = listOf(
+      """"future" 1""", """"future"::1""", """"future":1 "more":2""", """"future":1:2""",
+      """"future":[1:2]""", """"future":[1}""", """"future":{"a"}""", """"future":{,"a":1}""",
+      ""","future":1""",
+    )
+    assertEquals(
+      members.map { it to ("refused keyframe" to 2L) },
+      members.map { it to outcome(surface("$FULL_BODY,$it}")) }
+    )
+  }
+
+  @Test
+  fun incompleteAndNonObjectPayloadsStayParserErrors() {
+    // A payload that ends before its object closes, or a JSON value that is
+    // not an object, still reaches org.json, which rejects it. No prefix of a
+    // record is ever committed.
+    val record = "$FULL_BODY}"
+    val prefixes = (0 until record.length).map { outcome(surface(record.substring(0, it))) }
+    assertEquals(
+      setOf(2L) to emptyList<String>(),
+      prefixes.mapTo(mutableSetOf()) { it.second } to
+        prefixes.map { it.first }.filter { it != "parser error" && it != "refused keyframe" }
+    )
+    val cuts = listOf(
+      "", "{", """{"version"""", """{"version":""", """{"version":2""", """{"version":2,""", """{"ver""",
+      FULL_BODY, "[]", "\"x\"", "1", "null", """[{"version":2}]""",
+    )
+    assertEquals(
+      cuts.map { it to ("parser error" to 2L) } + ("tr" to ("refused keyframe" to 2L)),
+      cuts.map { it to outcome(surface(it)) } +
+        ("tr" to outcome(surface("""{"version":2,"epoch":7,"gen":tr""")))
+    )
+  }
+
+  @Test
+  fun jsonStructureAndTrailingWhitespaceStayAdmitted() {
+    val members = listOf(
+      """"future":{}""", """"future":[]""", """"future":[[],[{}],{"b":[]}]""", """"":1""",
+      """"future":{ }""", """"future":[ ]""", """"future" : [ 1 , { "k" : null } ]""",
+      """"future":"{,}[,]:\",}"""", """"future":"\\"""",
+    )
+    val suffixes = listOf(" ", "\t", "\r\n", "\n\n", "  \r\n\t ")
+    assertEquals(
+      (members + suffixes).map { it to ("frame b" to 3L) },
+      members.map { it to outcome(surface("$FULL_BODY,$it}")) } +
+        suffixes.map { it to outcome(surface("$FULL_BODY}$it")) }
+    )
+  }
+
+  /**
+   * Decodes [record] over the stamped [base] baseline and names the outcome
+   * (`frame <first cell>`, `refused <pending repair>` or `parser error`),
+   * then decodes the baseline again and returns its consumed generation: 2
+   * means the record did not advance the session.
+   */
+  private fun outcome(record: String): Pair<String, Long> {
+    val session = SwiftTUIWebSurfaceSession()
+    session.decode(wire(base()))
+    val observed = try {
+      session.decode(record)?.let { "frame ${it.cells.first().character}" }
+        ?: "refused ${session.pendingResyncScope}"
+    } catch (_: JSONException) {
+      "parser error"
+    }
+    return observed to requireNotNull(session.decode(wire(base()))).consumedGeneration
+  }
+
   private data class Admission(val accepted: Boolean, val opacity: Double?, val resync: String?)
 
   private fun surface(json: String): String = SwiftTUIWebSurfaceSession.RECORD_PREFIX + json + "\n"
+
+  private companion object {
+    /** A stamped full frame over [base] (generation 2, cell `b`) without its closing brace. */
+    const val FULL_BODY =
+      """{"version":2,"epoch":7,"gen":2,"width":1,"height":2,"styles":[null],"rows":[[[0,"b",1,0]],[]]"""
+  }
 
   private fun styledFull(opacity: String): String = surface(
     """{"version":2,"epoch":7,"gen":2,"width":1,"height":2,"styles":[null,{"opacity":$opacity}],""" +

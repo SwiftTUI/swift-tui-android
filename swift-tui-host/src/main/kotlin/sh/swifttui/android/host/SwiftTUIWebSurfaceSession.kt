@@ -78,7 +78,7 @@ class SwiftTUIWebSurfaceSession {
     }
     // Scan exactly the JSON text that org.json parses; the record name is not JSON.
     val json = payload.removePrefix(RECORD_PREFIX).trimEnd('\n')
-    if (!SwiftTUIWireBudget.depth(json)) {
+    if (!SwiftTUIWireBudget.admitsJSON(json)) {
       return refuseDelta(shouldRequestKeyframe = true)
     }
     val record = JSONObject(json)

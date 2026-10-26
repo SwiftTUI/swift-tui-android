@@ -29,7 +29,7 @@ class AdversarialA1BudgetTest(private val id: String, private val scenario: Int)
         assertTrue(SwiftTUIWireBudget.fitsUTF8(value, limit))
         assertFalse(SwiftTUIWireBudget.fitsUTF8(value, limit - 1))
       }
-      75 -> assertTrue(SwiftTUIWireBudget.depth("{\"note\":\"[{}] \\\" [\"}"))
+      75 -> assertTrue(SwiftTUIWireBudget.admitsJSON("{\"note\":\"[{}] \\\" [\"}"))
       else -> error(id)
     }
   }

@@ -44,47 +44,98 @@ internal object SwiftTUIWireBudget {
   }
 
   /**
-   * Lexical admission of a JSON payload before org.json parses it: nesting
-   * depth, plus the JSON token grammar outside strings. org.json is lenient
-   * and would read non-JSON runs such as `NaN`, `Infinity`, `+1`, `0x10`,
-   * `TRUE` or unquoted words as values, which browser `JSON.parse` rejects.
+   * Admission of a JSON payload before org.json parses it: the RFC 8259
+   * grammar, plus nesting depth. org.json is lenient. It would read non-JSON
+   * runs such as `NaN`, `Infinity`, `+1`, `0x10`, `TRUE` or unquoted words as
+   * values, take a numeric or literal key as text, read an elided array
+   * element as null, drop a trailing `,` and ignore anything after the first
+   * value. Browser `JSON.parse` rejects all of these. The scan therefore
+   * requires string keys, one `:` after each key, one `,` between members
+   * and between elements, closers that match, and one top-level value
+   * followed only by JSON whitespace, with at most [JSON_DEPTH] levels.
    * Every bare run must be `true`, `false`, `null` or an RFC 8259 number,
-   * delimited by structural characters or the four JSON whitespace
-   * characters. This is syntax only: `1e400` is a valid number.
+   * delimited by structural characters, a quote or the four JSON whitespace
+   * characters. This is syntax only: `1e400` is a valid number, and string
+   * contents are not checked.
+   *
+   * The scan fails at the first token no JSON text can hold at that point.
+   * A payload that ends before its value closes passes, and org.json then
+   * rejects it as malformed.
    */
-  fun depth(text: String): Boolean {
+  fun admitsJSON(text: String): Boolean {
+    val objects = BooleanArray(JSON_DEPTH) // Per open container: object (true) or array.
     var depth = 0
-    var quoted = false
-    var escaped = false
-    var token = -1 // Start of the bare run being scanned, or -1.
-    for (index in text.indices) {
+    var next = VALUE
+    var index = 0
+    while (index < text.length) {
       val c = text[index]
-      if (quoted) {
-        if (escaped) escaped = false
-        else if (c == '\\') escaped = true
-        else if (c == '"') quoted = false
-      } else if (c == '"') {
-        // Android's lenient JSONTokener accepts quotes inside unquoted
-        // literals. Such a quote must not hide later nesting from this scan.
-        if (token >= 0) return false
-        quoted = true
-      } else if (c == '\'' || c == '/' || c == '#') {
-        // Single-quoted strings and comments are outside the JSON wire
-        // contract and can contain quotes that disagree with this scanner.
-        return false
-      } else if (c == '[' || c == '{' || c == ']' || c == '}' || c == ':' || c == ',' ||
-        c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-        if (token >= 0 && !bareToken(text, token, index)) return false
-        token = -1
-        if (c == '[' || c == '{') {
-          if (++depth > JSON_DEPTH) return false
-        } else if (c == ']' || c == '}') {
-          if (--depth < 0) return false
+      when {
+        c == ' ' || c == '\t' || c == '\n' || c == '\r' -> index++
+        c == '"' -> {
+          next = when (next) {
+            VALUE, VALUE_OR_CLOSE -> if (depth == 0) END else SEPARATOR_OR_CLOSE
+            KEY, KEY_OR_CLOSE -> COLON
+            else -> return false
+          }
+          index++
+          var escaped = false
+          while (index < text.length) {
+            val s = text[index++]
+            if (escaped) escaped = false
+            else if (s == '\\') escaped = true
+            else if (s == '"') break
+          }
         }
-      } else if (token < 0) token = index
+        c == '{' || c == '[' -> {
+          if ((next != VALUE && next != VALUE_OR_CLOSE) || depth == JSON_DEPTH) return false
+          objects[depth++] = c == '{'
+          next = if (c == '{') KEY_OR_CLOSE else VALUE_OR_CLOSE
+          index++
+        }
+        c == '}' || c == ']' -> {
+          val closesObject = c == '}'
+          if (depth == 0 || objects[depth - 1] != closesObject) return false
+          if (next != SEPARATOR_OR_CLOSE && next != (if (closesObject) KEY_OR_CLOSE else VALUE_OR_CLOSE)) {
+            return false
+          }
+          depth--
+          next = if (depth == 0) END else SEPARATOR_OR_CLOSE
+          index++
+        }
+        c == ':' -> {
+          if (next != COLON) return false
+          next = VALUE
+          index++
+        }
+        c == ',' -> {
+          if (next != SEPARATOR_OR_CLOSE) return false
+          next = if (objects[depth - 1]) KEY else VALUE
+          index++
+        }
+        else -> {
+          if (next != VALUE && next != VALUE_OR_CLOSE) return false
+          val start = index
+          while (index < text.length && !delimitsBareRun(text[index])) index++
+          if (!bareToken(text, start, index)) return false
+          next = if (depth == 0) END else SEPARATOR_OR_CLOSE
+        }
+      }
     }
-    return token < 0 || bareToken(text, token, text.length)
+    return true
   }
+
+  // The token class [admitsJSON] accepts next.
+  private const val VALUE = 0 // At the top level, after `:` and after `,` in an array.
+  private const val VALUE_OR_CLOSE = 1 // After `[`.
+  private const val KEY = 2 // After `,` in an object.
+  private const val KEY_OR_CLOSE = 3 // After `{`.
+  private const val COLON = 4 // After a key.
+  private const val SEPARATOR_OR_CLOSE = 5 // After a value in a container.
+  private const val END = 6 // After the top-level value: JSON whitespace only.
+
+  private fun delimitsBareRun(c: Char): Boolean =
+    c == '[' || c == ']' || c == '{' || c == '}' || c == ':' || c == ',' || c == '"' ||
+      c == ' ' || c == '\t' || c == '\n' || c == '\r'
 
   /** Whether `text[start, end)` is exactly a JSON literal name or RFC 8259 §6 number. */
   private fun bareToken(text: String, start: Int, end: Int): Boolean {

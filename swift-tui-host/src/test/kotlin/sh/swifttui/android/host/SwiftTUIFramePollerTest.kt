@@ -164,6 +164,43 @@ class SwiftTUIFramePollerTest {
   }
 
   @Test
+  fun structuralJsonExtensionsKeepTheLastFrameAndRequestOneKeyframe() {
+    // STUI-1277: a trailing separator, a trailing array element separator
+    // and a second value after the object are refused before parsing, like
+    // a non-JSON token. The last frame stays published, one keyframe repair
+    // is requested, and the next full frame recovers.
+    val native = FakeFrameNative()
+    val poller = native.makePoller()
+    val trailingMember = fullRecord(sequence = 2, epoch = 71, generation = 2, text = "T")
+      .replace("]}\n", "],}\n")
+    val trailingElement = fullRecord(sequence = 3, epoch = 71, generation = 3, text = "E")
+      .replace(""""styles":[null]""", """"styles":[null,]""")
+    val second = fullRecord(sequence = 4, epoch = 71, generation = 4, text = "S").trimEnd('\n') +
+      fullRecord(sequence = 5, epoch = 71, generation = 5, text = "Z").removePrefix(prefix)
+    val records = listOf(
+      fullRecord(sequence = 1, epoch = 71, generation = 1, text = "A"),
+      trailingMember,
+      trailingElement,
+      second,
+      fullRecord(sequence = 5, epoch = 71, generation = 5, text = "K"),
+      deltaRecord(sequence = 6, epoch = 71, generation = 6, baselineGeneration = 5, text = "R")
+    )
+
+    val observed = records.map { record ->
+      native.enqueue(record)
+      when (val result = poller.poll(5)) {
+        is SwiftTUIFramePollResult.Frame -> "Frame:" + result.value.cells.single().character
+        else -> result.toString()
+      }
+    }
+
+    assertEquals(
+      listOf("Frame:A", "None", "None", "None", "Frame:K", "Frame:R") to listOf("""{"scope":"keyframe"}"""),
+      observed to native.resyncRequests
+    )
+  }
+
+  @Test
   fun partialStampedFrameFailsAtomicallyAndRequestsOneKeyframe() {
     val native = FakeFrameNative()
     val poller = native.makePoller()
