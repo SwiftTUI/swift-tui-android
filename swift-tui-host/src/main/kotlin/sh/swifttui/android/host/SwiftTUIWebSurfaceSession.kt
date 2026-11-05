@@ -2,6 +2,7 @@ package sh.swifttui.android.host
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 
 /**
  * Decoder session for the shared SwiftTUI `web-surface` wire (the converged
@@ -71,18 +72,32 @@ class SwiftTUIWebSurfaceSession {
    * guard, not an error path). A record declaring a newer version than
    * [SUPPORTED_WEB_SURFACE_VERSION] fails loudly (the F57 skew guard).
    */
-  fun decode(payload: String): SwiftTUIFrame? {
+  fun decode(payload: String): SwiftTUIFrame? = decodeRecord(payload, validatedUTF8Bytes = -1)
+
+  // Only the native poller supplies this count, after strict UTF-8 admission.
+  // Direct String callers still receive the complete UTF-8 allocation check.
+  internal fun decodeValidatedUTF8(payload: String, byteCount: Int): SwiftTUIFrame? {
+    require(byteCount >= 0)
+    return decodeRecord(payload, validatedUTF8Bytes = byteCount)
+  }
+
+  private fun decodeRecord(payload: String, validatedUTF8Bytes: Int): SwiftTUIFrame? {
     require(payload.startsWith(RECORD_PREFIX)) { "not a web-surface record" }
     val byteLimit = SwiftTUIWireBudget.RECORD_BYTES + if (payload.endsWith('\n')) 1 else 0
-    if (!SwiftTUIWireBudget.fitsUTF8(payload, byteLimit)) {
+    val fitsBudget = if (validatedUTF8Bytes >= 0) validatedUTF8Bytes <= byteLimit
+      else SwiftTUIWireBudget.fitsUTF8(payload, byteLimit)
+    if (!fitsBudget) {
       return refuseDelta(shouldRequestKeyframe = true)
     }
     // Scan exactly the JSON text that org.json parses; the record name is not JSON.
-    val json = payload.removePrefix(RECORD_PREFIX).trimEnd('\n')
-    if (!SwiftTUIWireBudget.admitsJSON(json)) {
+    if (!SwiftTUIWireBudget.admitsJSON(payload, RECORD_PREFIX.length)) {
       return refuseDelta(shouldRequestKeyframe = true)
     }
-    val record = JSONObject(json)
+    // Advance over the ASCII record name without copying the complete payload.
+    // The scanner and parser both retain the same trailing JSON whitespace.
+    val tokens = JSONTokener(payload)
+    repeat(RECORD_PREFIX.length) { tokens.next() }
+    val record = JSONObject(tokens)
     val version = record.optInt("version", 0)
     require(version <= SUPPORTED_WEB_SURFACE_VERSION) {
       "web-surface version $version is newer than the supported " +

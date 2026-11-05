@@ -39,6 +39,53 @@ class SwiftTUIFramePollerTest {
     }
   }
 
+  @Test fun utf8FastPathPreservesUnicodeAndLiteralReplacementCharacters() {
+    for (text in listOf("ASCII", "é", "😀", "\uFFFD", "left\uFFFDright")) {
+      val native = FakeFrameNative()
+      native.enqueue(fullRecord(1, 71, 1, text))
+      val result = native.makePoller().poll(9) as SwiftTUIFramePollResult.Frame
+      assertEquals(text, result.value.cells.first().character)
+      assertTrue(native.resyncRequests.isEmpty())
+    }
+  }
+
+  @Test fun malformedUtf8NeverBecomesAReplacementCharacterInCommittedState() {
+    val malformed = listOf(
+      listOf(0x80), listOf(0xFF), listOf(0xC0, 0xAF), listOf(0xC2),
+      listOf(0xE0, 0x80, 0x80), listOf(0xED, 0xA0, 0x80),
+      listOf(0xF0, 0x80, 0x80, 0x80), listOf(0xF4, 0x90, 0x80, 0x80),
+      listOf(0xF0, 0x9F, 0x98)
+    )
+    val parts = fullRecord(2, 71, 2, "UTF8_MARKER").split("UTF8_MARKER")
+    assertEquals(2, parts.size)
+    for (sequence in malformed) {
+      val native = FakeFrameNative()
+      val poller = native.makePoller()
+      native.enqueue(fullRecord(1, 71, 1, "A"))
+      assertTrue(poller.poll(9) is SwiftTUIFramePollResult.Frame)
+      native.enqueue(parts[0].encodeToByteArray() + sequence.map { it.toByte() }.toByteArray() + parts[1].encodeToByteArray())
+      assertTrue(poller.poll(9) !is SwiftTUIFramePollResult.Frame)
+      assertEquals(listOf("""{"scope":"keyframe"}"""), native.resyncRequests)
+      native.enqueue(fullRecord(3, 71, 3, "B"))
+      assertTrue(poller.poll(9) is SwiftTUIFramePollResult.Frame)
+    }
+  }
+
+  @Test fun nativeByteCountEnforcesTheRecordLimitAndOptionalTerminalLF() {
+    val stem = fullRecord(1, 71, 1, "A").trimEnd('\n').dropLast(1) + ",\"future\":\""
+    val atLimit = stem + "x".repeat(SwiftTUIWireBudget.RECORD_BYTES - stem.length - 2) + "\"}"
+    assertEquals(SwiftTUIWireBudget.RECORD_BYTES, atLimit.encodeToByteArray().size)
+    for (record in listOf(atLimit, atLimit + "\n")) {
+      val native = FakeFrameNative()
+      native.enqueue(record)
+      assertTrue(native.makePoller().poll(9) is SwiftTUIFramePollResult.Frame)
+    }
+    val native = FakeFrameNative()
+    native.enqueue(atLimit + " ") // Same native copy capacity, but no excluded LF.
+    assertTrue(native.makePoller().poll(9) !is SwiftTUIFramePollResult.Frame)
+    assertEquals(listOf("""{"scope":"keyframe"}"""), native.resyncRequests)
+  }
+
   @Test
   fun droppedDeltaRequestsOneKeyframeAndTheNextFullFrameRecovers() {
     val native = FakeFrameNative()

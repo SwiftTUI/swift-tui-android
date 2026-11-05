@@ -10,6 +10,21 @@ class SwiftTUIWebSurfaceSessionTest {
   private val prefix = SwiftTUIWebSurfaceSession.RECORD_PREFIX
 
   @Test
+  fun scansAndParsesTheSameRecordSliceWithoutDroppingTrailingTokens() {
+    val json = fullRecord(sequence = 7, rowText = listOf("abc")).removePrefix(prefix).trimEnd('\n')
+    for (whitespace in listOf("", "\n", "\r\n", "\n\n", " \t\r\n")) {
+      val frame = requireNotNull(SwiftTUIWebSurfaceSession().decode(prefix + " \t" + json + whitespace))
+      assertEquals(7L, frame.sequence)
+    }
+    for (trailing in listOf(" true", "{}", "\n0")) {
+      assertNull(SwiftTUIWebSurfaceSession().decode(prefix + json + trailing))
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      SwiftTUIWebSurfaceSession().decode("bad" + json)
+    }
+  }
+
+  @Test
   fun mapsAFullV2RecordOntoTheFrameModel() {
     val session = SwiftTUIWebSurfaceSession()
     val record = prefix +

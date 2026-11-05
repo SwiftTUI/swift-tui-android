@@ -88,7 +88,7 @@ internal class SwiftTUIFramePoller(
 
     val previousEpoch = session.lastEpoch
     val decoded = runCatching {
-      val payload = bytes.decodeToString(0, copied, throwOnInvalidSequence = true)
+      val payload = decodeStrictFrameUTF8(bytes, copied)
       require(!payload.startsWith("\u001EruntimeIssue:")) {
         "SwiftTUI host refused to encode the frame within its wire allocation budget."
       }
@@ -97,7 +97,7 @@ internal class SwiftTUIFramePoller(
           "predates the converged web-surface wire — update the swift-tui " +
           "dependency to match this AAR."
       }
-      session.decode(payload)
+      session.decodeValidatedUTF8(payload, copied)
     }
 
     val error = decoded.exceptionOrNull()
@@ -187,4 +187,15 @@ internal class SwiftTUIFramePoller(
   private companion object {
     const val KEYFRAME_RESYNC_JSON = """{"scope":"keyframe"}"""
   }
+}
+
+/** The platform decoder substitutes U+FFFD for every malformed UTF-8 sequence.
+ * Its absence therefore proves the fast decode was lossless. Only a substituted
+ * or literal U+FFFD needs the strict decoder to distinguish those cases; ordinary
+ * ASCII and Unicode frames avoid its decoder/character-buffer allocations.
+ * JSON is still materialized exactly once by the session after this admission.
+ */
+private fun decodeStrictFrameUTF8(bytes: ByteArray, count: Int): String {
+  val text = bytes.decodeToString(0, count)
+  return if ('\uFFFD' in text) bytes.decodeToString(0, count, throwOnInvalidSequence = true) else text
 }

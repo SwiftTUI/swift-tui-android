@@ -62,11 +62,12 @@ internal object SwiftTUIWireBudget {
    * A payload that ends before its value closes passes, and org.json then
    * rejects it as malformed.
    */
-  fun admitsJSON(text: String): Boolean {
+  fun admitsJSON(text: String, startIndex: Int = 0): Boolean {
+    if (startIndex !in 0..text.length) return false
     val objects = BooleanArray(JSON_DEPTH) // Per open container: object (true) or array.
     var depth = 0
     var next = VALUE
-    var index = 0
+    var index = startIndex
     while (index < text.length) {
       val c = text[index]
       when {
@@ -180,6 +181,8 @@ internal object SwiftTUIWireBudget {
 
   // Eight units per JSON value, plus UTF-8 bytes in keys and string values.
   private fun styleContent(style: Any): Boolean {
+    // Scalar JSON leaves cost eight units and need no captured traversal state.
+    if (style !is String && style !is JSONArray && style !is JSONObject) return STYLE_BYTES >= 8
     var remaining = STYLE_BYTES
     fun chargeString(text: String): Boolean {
       var index = 0
@@ -207,6 +210,9 @@ internal object SwiftTUIWireBudget {
     }
     return visit(style)
   }
+
+  private val metadataKeys = arrayOf("accessibilityTree", "accessibilityAnnouncements", "scrollRegions", "linkTargets")
+  private val preferredDimensionKeys = arrayOf("preferredGridWidth", "preferredGridHeight")
 
   fun surface(record: JSONObject, width: Int, height: Int): Boolean {
     if (!grid(width, height)) return false
@@ -264,36 +270,36 @@ internal object SwiftTUIWireBudget {
         }
       }
     }
-    for (key in listOf("accessibilityTree", "accessibilityAnnouncements", "scrollRegions", "linkTargets")) {
+    for (key in metadataKeys) {
       if ((record.optJSONArray(key)?.length() ?: 0) > METADATA_ENTRIES) return false
     }
-    for (key in listOf("preferredGridWidth", "preferredGridHeight")) {
+    for (key in preferredDimensionKeys) {
       if (record.has(key) && (record.exactInt(key) ?: return false) !in 0..GRID_DIMENSION) return false
     }
     if (!grid(record.optInt("preferredGridWidth", 0), record.optInt("preferredGridHeight", 0))) return false
-    for ((rows, arity) in listOf(
-      record.optJSONArray("links") to HostContract.LINK_RUN_ARITY,
-      record.optJSONObject("damage")?.optJSONArray("textRows") to HostContract.TEXT_RANGE_ARITY
-    )) {
-      if (rows == null) continue
-      if (rows.length() > height) return false
-      val seen = mutableSetOf<Int>()
-      for (index in 0 until rows.length()) {
-        val entry = rows.optJSONArray(index) ?: return false
-        if (entry.length() != HostContract.TEXT_ROW_ARITY) return false
-        val y = entry.exactInt(0) ?: return false
-        val ranges = entry.optJSONArray(1) ?: return false
-        if (y !in 0 until height || !seen.add(y) || ranges.length() > width) return false
-        var end = 0L
-        for (rangeIndex in 0 until ranges.length()) {
-          val range = ranges.optJSONArray(rangeIndex) ?: return false
-          if (range.length() != arity) return false
-          val start = range.exactInt(0)?.toLong() ?: return false
-          val value = range.exactInt(1)?.toLong() ?: return false
-          val stop = if (arity == HostContract.LINK_RUN_ARITY) start + value else value
-          if (start < 0 || (arity == HostContract.LINK_RUN_ARITY && start < end) || stop < start || stop > width) return false
-          end = stop
-        }
+    return rangeRows(record.optJSONArray("links"), HostContract.LINK_RUN_ARITY, width, height) &&
+      rangeRows(record.optJSONObject("damage")?.optJSONArray("textRows"), HostContract.TEXT_RANGE_ARITY, width, height)
+  }
+
+  private fun rangeRows(rows: JSONArray?, arity: Int, width: Int, height: Int): Boolean {
+    if (rows == null || rows.length() == 0) return true
+    if (rows.length() > height) return false
+    val seen = mutableSetOf<Int>()
+    for (index in 0 until rows.length()) {
+      val entry = rows.optJSONArray(index) ?: return false
+      if (entry.length() != HostContract.TEXT_ROW_ARITY) return false
+      val y = entry.exactInt(0) ?: return false
+      val ranges = entry.optJSONArray(1) ?: return false
+      if (y !in 0 until height || !seen.add(y) || ranges.length() > width) return false
+      var end = 0L
+      for (rangeIndex in 0 until ranges.length()) {
+        val range = ranges.optJSONArray(rangeIndex) ?: return false
+        if (range.length() != arity) return false
+        val start = range.exactInt(0)?.toLong() ?: return false
+        val value = range.exactInt(1)?.toLong() ?: return false
+        val stop = if (arity == HostContract.LINK_RUN_ARITY) start + value else value
+        if (start < 0 || (arity == HostContract.LINK_RUN_ARITY && start < end) || stop < start || stop > width) return false
+        end = stop
       }
     }
     return true
