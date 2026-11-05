@@ -41,7 +41,8 @@ class SwiftTUIWebSurfaceSession {
   private var baselineStyles: List<SwiftTUITextStyle?> = emptyList()
   private var baselineWidth = 0
   private var baselineHeight = 0
-  private var lastEpoch: Long? = null
+  internal var lastEpoch: Long? = null
+    private set
   private var lastGeneration: Long? = null
   private var consumedGeneration = 0L
 

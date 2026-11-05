@@ -17,6 +17,21 @@ class SwiftTUIAccessibilityActionTest {
     assertEquals("\u001Eaccessibility:1:x:increment\n", SwiftTUIAccessibilityActionRequest("x", "increment").encode(1)?.decodeToString())
   }
 
+  @Test fun epochReplacementRetiresRepliesEvenWhenTargetsAreReused() {
+    val requests = SwiftTUIAccessibilityRequests()
+    requests.observeEpoch(null)
+    var prior = requests.issue("same")!!
+    for (epoch in listOf(7L, 8L, null)) {
+      requests.observeEpoch(epoch)
+      assertNull(requests.accept(SwiftTUIAccessibilityActionResponse(prior.toString(), "same", "accepted")))
+      val current = requests.issue("same")!!
+      assertTrue(current > prior)
+      requests.observeEpoch(epoch)
+      assertNotNull(requests.accept(SwiftTUIAccessibilityActionResponse(current.toString(), "same", "accepted")))
+      prior = requests.issue("same")!!
+    }
+  }
+
   @Test fun decodesStrictValueTypesAndLosslessResponseIDs() {
     assertNull(JSONObject("""{"type":"boolean","value":"true"}""").toAccessibilityValue())
     assertNull(JSONObject("""{"type":"number","value":"3"}""").toAccessibilityValue())

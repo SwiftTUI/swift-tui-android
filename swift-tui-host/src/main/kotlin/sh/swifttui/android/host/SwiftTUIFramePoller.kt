@@ -12,10 +12,11 @@ internal sealed interface SwiftTUIFramePollResult {
      * the frame currently published by host state. This signal bypasses only
      * that duplicate-sequence suppression.
      */
-    val isImagePayloadRepair: Boolean
+    val isImagePayloadRepair: Boolean,
+    val isSessionReplacement: Boolean = false
   ) : SwiftTUIFramePollResult {
     fun shouldPublishOver(current: SwiftTUIFrame?): Boolean =
-      isImagePayloadRepair || value.sequence != current?.sequence
+      isSessionReplacement || isImagePayloadRepair || value.sequence != current?.sequence
   }
   data class Error(val message: String) : SwiftTUIFramePollResult
 }
@@ -35,12 +36,15 @@ internal class SwiftTUIFramePoller(
   private val copyLatestFrame: (Long, ByteArray?, Int) -> Int,
   private val requestResync: (Long, ByteArray, Int) -> Int
 ) {
+  internal val epoch: Long? get() = session.lastEpoch
+  private var hasPresentedFrame = false
   private var keyframeRequestOutstanding = false
   private val queuedImagePayloadIds = linkedSetOf<String>()
   private val outstandingImagePayloadIds = mutableSetOf<String>()
 
   fun reset() {
     session.reset()
+    hasPresentedFrame = false
     keyframeRequestOutstanding = false
     queuedImagePayloadIds.clear()
     outstandingImagePayloadIds.clear()
@@ -82,8 +86,9 @@ internal class SwiftTUIFramePoller(
       return SwiftTUIFramePollResult.None
     }
 
-    val payload = bytes.decodeToString(0, copied)
+    val previousEpoch = session.lastEpoch
     val decoded = runCatching {
+      val payload = bytes.decodeToString(0, copied, throwOnInvalidSequence = true)
       require(!payload.startsWith("\u001EruntimeIssue:")) {
         "SwiftTUI host refused to encode the frame within its wire allocation budget."
       }
@@ -108,6 +113,12 @@ internal class SwiftTUIFramePoller(
       return SwiftTUIFramePollResult.None
     }
 
+    val isSessionReplacement = hasPresentedFrame && previousEpoch != session.lastEpoch
+    hasPresentedFrame = true
+    if (isSessionReplacement) {
+      queuedImagePayloadIds.clear()
+      outstandingImagePayloadIds.clear()
+    }
     var isImagePayloadRepair = false
     val presentedIds = frame.imageAttachments.mapTo(mutableSetOf()) { it.id }
     queuedImagePayloadIds.retainAll(presentedIds)
@@ -131,7 +142,8 @@ internal class SwiftTUIFramePoller(
     dispatchPendingResync(handle)
     return SwiftTUIFramePollResult.Frame(
       value = frame,
-      isImagePayloadRepair = isImagePayloadRepair
+      isImagePayloadRepair = isImagePayloadRepair,
+      isSessionReplacement = isSessionReplacement
     )
   }
 
@@ -161,7 +173,7 @@ internal class SwiftTUIFramePoller(
       JSONObject.quote(id)
     }
     val request = json.encodeToByteArray()
-    // As with keyframes, zero means an older host lacks the lazy symbol.
+    // As with keyframes, zero means an older host lacks the optional symbol.
     // Keeping the IDs outstanding prevents a 30 Hz request loop.
     requestResync(handle, request, request.size)
   }

@@ -206,6 +206,7 @@ class SwiftTUIHostState internal constructor(
       SwiftTUIFramePollResult.None -> Unit
       is SwiftTUIFramePollResult.Frame -> {
         if (result.shouldPublishOver(frame)) {
+          accessibilityRequests.observeEpoch(framePoller.epoch)
           accessibilityRequests.retainTargets(result.value.accessibilityNodes.mapNotNull { it.actionTarget }.toSet())
           frame = result.value.copy(accessibilityActionResponse = accessibilityRequests.accept(result.value.accessibilityActionResponse))
         }

@@ -5,6 +5,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SwiftTUIFramePollerTest {
+  @Test fun replacementEpochPublishesEvenWhenApplicationSequenceIsReused() {
+    val native = FakeFrameNative()
+    val poller = native.makePoller()
+    native.enqueue(fullRecord(1, 71, 1, "A"))
+    val first = (poller.poll(9) as SwiftTUIFramePollResult.Frame).value
+    native.enqueue(fullRecord(1, 72, 1, "B"))
+    val replacement = poller.poll(9) as SwiftTUIFramePollResult.Frame
+    assertTrue(replacement.isSessionReplacement)
+    assertTrue(replacement.shouldPublishOver(first))
+    assertEquals(72L, poller.epoch)
+  }
+
+  @Test fun ambiguousJSONAndMalformedUTF8PreserveStateAndCoalesceRepair() {
+    val valid = fullRecord(1, 71, 1, "A")
+    val invalid = listOf(
+      valid.replace("\"version\":2", "\"version\":2,\"version\":2").encodeToByteArray(),
+      valid.replace("\"version\":2", "\"unknown\":1e999,\"version\":2").encodeToByteArray(),
+      valid.encodeToByteArray().also { it[it.indexOf('A'.code.toByte())] = 0xff.toByte() }
+    )
+    for (bytes in invalid) {
+      val native = FakeFrameNative()
+      val poller = native.makePoller()
+      native.enqueue(valid)
+      assertTrue(poller.poll(9) is SwiftTUIFramePollResult.Frame)
+      repeat(2) {
+        native.enqueue(bytes)
+        assertTrue(poller.poll(9) !is SwiftTUIFramePollResult.Frame)
+      }
+      assertEquals(listOf("""{"scope":"keyframe"}"""), native.resyncRequests)
+      native.enqueue(fullRecord(2, 71, 2, "B"))
+      assertTrue(poller.poll(9) is SwiftTUIFramePollResult.Frame)
+    }
+  }
+
   @Test
   fun droppedDeltaRequestsOneKeyframeAndTheNextFullFrameRecovers() {
     val native = FakeFrameNative()
@@ -348,9 +382,8 @@ class SwiftTUIFramePollerTest {
       private set
     private var sizeUnderreportBy = 0
 
-    fun enqueue(record: String) {
-      records.addLast(record.encodeToByteArray())
-    }
+    fun enqueue(record: String) { enqueue(record.encodeToByteArray()) }
+    fun enqueue(record: ByteArray) { records.addLast(record) }
 
     /** Makes the size query under-report, as a grown copy-time re-encode does. */
     fun reportSizeSmallerBy(bytes: Int) {

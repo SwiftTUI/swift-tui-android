@@ -201,10 +201,9 @@ class SwiftTUIWireBudgetTest {
   }
 
   @Test
-  fun overflowingJsonExponentStaysAdmitted() {
-    // X1-055: `1e400` is RFC 8259 number syntax. The contract states no
-    // consumer range policy, so lexical admission leaves it to the parser
-    // (the JVM org.json artifact retains Infinity; that probe stays uncounted).
+  fun overflowingJsonExponentIsRefusedBeforeMaterialization() {
+    // The client contract bounds numbers to finite binary64 values, including
+    // unknown fields. Preserve the previous frame and request repair.
     val session = SwiftTUIWebSurfaceSession()
     val frame = session.decode(
       surface(
@@ -212,8 +211,8 @@ class SwiftTUIWireBudgetTest {
           """"rows":[[[0,"B",1,1]]],"epoch":700,"gen":1}"""
       )
     )
-    assertEquals("B", requireNotNull(frame).cells.single().character)
-    assertNull(session.pendingResyncScope)
+    assertNull(frame)
+    assertEquals("keyframe", session.pendingResyncScope)
   }
 
   @Test

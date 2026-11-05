@@ -2,6 +2,8 @@
 #include <dlfcn.h>
 #include <jni.h>
 
+#include "host_abi_loader.h"
+
 #include <cstdint>
 #include <mutex>
 
@@ -14,59 +16,19 @@ constexpr const char* kLogTag = "SwiftTUIJNI";
 constexpr const char* kHostLibrary = "libswift_tui_app_host.so";
 constexpr const char* kJniClassName = "sh/swifttui/android/host/SwiftTUIJni";
 
-using VoidFunction = void (*)();
-using CreateHost = int64_t (*)();
-using HandleFunction = void (*)(int64_t);
-using TickFunction = int32_t (*)(int64_t);
-using DiagFunction = int64_t (*)();
-using ResizeFunction = void (*)(int64_t, int32_t, int32_t, double, double);
-using SendInputFunction = void (*)(int64_t, const uint8_t*, int32_t);
-using DeclareCapabilitiesFunction = int32_t (*)(int64_t, const uint8_t*, int32_t);
-using RequestResyncFunction = int32_t (*)(int64_t, const uint8_t*, int32_t);
-using CopyLatestFrameFunction = int32_t (*)(int64_t, uint8_t*, int32_t);
-using CopyClipboardTextFunction = int32_t (*)(int64_t, uint8_t*, int32_t);
-
 std::once_flag gLoadOnce;
 void* gHostHandle = nullptr;
+HostFunctions gHost;
+std::string gLoadError;
 
 void loadHostLibrary() {
   gHostHandle = dlopen(kHostLibrary, RTLD_NOW | RTLD_LOCAL);
   if (gHostHandle == nullptr) {
-    __android_log_print(
-      ANDROID_LOG_ERROR,
-      kLogTag,
-      "dlopen(%s) failed: %s",
-      kHostLibrary,
-      dlerror()
-    );
+    const char* detail = dlerror();
+    gLoadError = std::string("android.abi.loadLibrary: ") + (detail ? detail : kHostLibrary);
+    return;
   }
-}
-
-void* resolveSymbol(const char* name) {
-  std::call_once(gLoadOnce, loadHostLibrary);
-  if (gHostHandle == nullptr) {
-    return nullptr;
-  }
-
-  dlerror();
-  void* symbol = dlsym(gHostHandle, name);
-  const char* error = dlerror();
-  if (error != nullptr) {
-    __android_log_print(
-      ANDROID_LOG_ERROR,
-      kLogTag,
-      "dlsym(%s) failed: %s",
-      name,
-      error
-    );
-    return nullptr;
-  }
-  return symbol;
-}
-
-template <typename Function>
-Function swiftSymbol(const char* name) {
-  return reinterpret_cast<Function>(resolveSymbol(name));
+  gLoadError = gHost.load(gHostHandle, dlsym);
 }
 
 // Native methods. Bound explicitly via RegisterNatives in JNI_OnLoad (below)
@@ -80,11 +42,11 @@ jlong nativeCreateHost(JNIEnv*, jobject) {
   // loops, animation deadline wakes — never resume on Android, because there is
   // no OS run loop to drain the Swift main executor. Idempotent.
   if (auto install =
-        swiftSymbol<VoidFunction>("swift_tui_android_install_executor")) {
+        gHost.install) {
     install();
   }
 
-  auto createHost = swiftSymbol<CreateHost>("swift_tui_android_create_host");
+  auto createHost = gHost.create;
   if (createHost == nullptr) {
     return 0;
   }
@@ -92,14 +54,14 @@ jlong nativeCreateHost(JNIEnv*, jobject) {
 }
 
 void nativeStart(JNIEnv*, jobject, jlong handle) {
-  auto start = swiftSymbol<HandleFunction>("swift_tui_android_start");
+  auto start = gHost.start;
   if (start != nullptr) {
     start(static_cast<int64_t>(handle));
   }
 }
 
 jint nativeTick(JNIEnv*, jobject, jlong handle) {
-  auto tick = swiftSymbol<TickFunction>("swift_tui_android_tick");
+  auto tick = gHost.tick;
   if (tick == nullptr) {
     return 0;
   }
@@ -112,7 +74,7 @@ jint nativeTick(JNIEnv*, jobject, jlong handle) {
   static int s_tickCount = 0;
   if (s_tickCount < 3 || status < 0) {
     int64_t diag = 0;
-    if (auto diagFn = swiftSymbol<DiagFunction>("swift_tui_android_diag")) {
+    if (auto diagFn = gHost.diagnostics) {
       diag = diagFn();
     }
     int installed = static_cast<int>(diag & 0x1);
@@ -136,14 +98,14 @@ jint nativeTick(JNIEnv*, jobject, jlong handle) {
 }
 
 void nativeStop(JNIEnv*, jobject, jlong handle) {
-  auto stop = swiftSymbol<HandleFunction>("swift_tui_android_stop");
+  auto stop = gHost.stop;
   if (stop != nullptr) {
     stop(static_cast<int64_t>(handle));
   }
 }
 
 void nativeDestroy(JNIEnv*, jobject, jlong handle) {
-  auto destroy = swiftSymbol<HandleFunction>("swift_tui_android_destroy");
+  auto destroy = gHost.destroy;
   if (destroy != nullptr) {
     destroy(static_cast<int64_t>(handle));
   }
@@ -158,7 +120,7 @@ void nativeResize(
   jdouble cellPixelWidth,
   jdouble cellPixelHeight
 ) {
-  auto resize = swiftSymbol<ResizeFunction>("swift_tui_android_resize");
+  auto resize = gHost.resize;
   if (resize != nullptr) {
     resize(
       static_cast<int64_t>(handle),
@@ -177,9 +139,7 @@ jint nativeCopyLatestFrame(
   jbyteArray outBuffer,
   jint capacity
 ) {
-  auto copyLatestFrame = swiftSymbol<CopyLatestFrameFunction>(
-    "swift_tui_android_copy_latest_frame"
-  );
+  auto copyLatestFrame = gHost.copyFrame;
   if (copyLatestFrame == nullptr) {
     return 0;
   }
@@ -211,9 +171,7 @@ jint nativeCopyClipboardText(
   jbyteArray outBuffer,
   jint capacity
 ) {
-  auto copyClipboardText = swiftSymbol<CopyClipboardTextFunction>(
-    "swift_tui_android_copy_clipboard_text"
-  );
+  auto copyClipboardText = gHost.copyClipboard;
   if (copyClipboardText == nullptr) {
     return 0;
   }
@@ -245,7 +203,7 @@ void nativeSendInput(
   jbyteArray input,
   jint count
 ) {
-  auto sendInput = swiftSymbol<SendInputFunction>("swift_tui_android_send_input");
+  auto sendInput = gHost.sendInput;
   if (sendInput == nullptr || input == nullptr || count <= 0) {
     return;
   }
@@ -272,11 +230,9 @@ jint nativeDeclareCapabilities(
   jbyteArray json,
   jint count
 ) {
-  // Resolved lazily like every other host symbol: an older Swift host
-  // library without this entry point degrades to a no-op, keeping the
-  // absence-means-defaults wire contract.
+  // Optional legacy operation; the cached table preserves full-frame defaults.
   auto declareCapabilities =
-    swiftSymbol<DeclareCapabilitiesFunction>("swift_tui_android_declare_capabilities");
+    gHost.capabilities;
   if (declareCapabilities == nullptr || json == nullptr || count <= 0) {
     return 0;
   }
@@ -304,11 +260,9 @@ jint nativeRequestResync(
   jbyteArray json,
   jint count
 ) {
-  // Resolved lazily for version skew: a newer AAR paired with an older Swift
-  // host library cannot repair proactively, so Kotlin deduplicates the failed
-  // request and waits for an incidental keyframe.
+  // An absent optional repair operation returns unsupported to Kotlin.
   auto requestResync =
-    swiftSymbol<RequestResyncFunction>("swift_tui_android_request_resync");
+    gHost.resync;
   if (requestResync == nullptr || json == nullptr || count <= 0) {
     return 0;
   }
@@ -338,7 +292,7 @@ jint nativeAccessibilityAction(
 ) {
   // Older runtime libraries return unsupported instead of interpreting actions as keys.
   auto accessibilityAction =
-    swiftSymbol<RequestResyncFunction>("swift_tui_android_accessibility_action");
+    gHost.accessibility;
   if (accessibilityAction == nullptr || json == nullptr || count <= 0) {
     return 0;
   }
@@ -382,6 +336,17 @@ const JNINativeMethod kMethods[] = {
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   JNIEnv* env = nullptr;
   if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+    return JNI_ERR;
+  }
+
+  std::call_once(gLoadOnce, loadHostLibrary);
+  if (!gLoadError.empty()) {
+    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s", gLoadError.c_str());
+    jclass errorClass = env->FindClass("java/lang/UnsatisfiedLinkError");
+    if (errorClass) {
+      env->ThrowNew(errorClass, gLoadError.c_str());
+      env->DeleteLocalRef(errorClass);
+    }
     return JNI_ERR;
   }
 

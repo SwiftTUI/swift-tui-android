@@ -1,9 +1,9 @@
 name: Test
 
 # Remote verification of this repo's public contract: the host library and the
-# Gradle plugin build from a fresh clone with a JDK + Android SDK only. Runs
+# Gradle plugin build from a fresh clone with a JDK, Android SDK, Python and host C/C++ compiler. Runs
 # the same command as the org root's //:swift_tui_android_native_gate (host
-# JVM unit tests + plugin validation) — NDK-free and no Swift toolchain; the
+# compiled ABI loader fixtures + JVM unit tests + plugin validation) — NDK-free and no Swift toolchain; the
 # Swift cross-build + emulator smoke remain a manual lane (blocked on the
 # bundled-NDK-sysroot include-path issue, see swift-tui-org proposal
 # 2026-06-26-001 #18).

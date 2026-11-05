@@ -3,18 +3,18 @@ package sh.swifttui.android.host
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Fixed cross-host limits, mirrored by Swift and the browser runtime. */
+/** Limits generated from the public contract schema. */
 internal object SwiftTUIWireBudget {
-  const val RECORD_BYTES = 4 * 1024 * 1024 // RS and prefix included; terminal LF excluded.
-  const val GRID_DIMENSION = 1024
-  const val GRID_CELLS = 65536
-  const val IMAGES = 1024
-  const val METADATA_ENTRIES = 65536
-  const val CELL_TEXT_BYTES = 256
-  const val STYLE_BYTES = 1024
-  const val JSON_DEPTH = 32
-  const val RASTER_DIMENSION = 8192
-  const val RASTER_PIXELS = 16 * 1024 * 1024
+  const val RECORD_BYTES = HostContract.RECORD_BYTES
+  const val GRID_DIMENSION = HostContract.GRID_DIMENSION
+  const val GRID_CELLS = HostContract.GRID_CELLS
+  const val IMAGES = HostContract.IMAGES
+  const val METADATA_ENTRIES = HostContract.METADATA_ENTRIES
+  const val CELL_TEXT_BYTES = HostContract.CELL_TEXT_BYTES
+  const val STYLE_BYTES = HostContract.STYLE_BYTES
+  const val JSON_DEPTH = HostContract.JSON_DEPTH
+  const val RASTER_DIMENSION = HostContract.RASTER_DIMENSION
+  const val RASTER_PIXELS = HostContract.RASTER_PIXELS
 
   fun imageSize(width: Int, height: Int): Boolean =
     width in 1..RASTER_DIMENSION && height in 1..RASTER_DIMENSION &&
@@ -55,8 +55,8 @@ internal object SwiftTUIWireBudget {
    * followed only by JSON whitespace, with at most [JSON_DEPTH] levels.
    * Every bare run must be `true`, `false`, `null` or an RFC 8259 number,
    * delimited by structural characters, a quote or the four JSON whitespace
-   * characters. This is syntax only: `1e400` is a valid number, and string
-   * contents are not checked.
+   * characters. Binary64 overflow is rejected even in unknown fields.
+   * org.json validates string escapes and rejects duplicate object keys.
    *
    * The scan fails at the first token no JSON text can hold at that point.
    * A payload that ends before its value closes passes, and org.json then
@@ -162,14 +162,20 @@ internal object SwiftTUIWireBudget {
       if (fractionEnd == index + 1) return false
       index = fractionEnd
     }
+    var hasExponent = false
     if (index < end && (text[index] == 'e' || text[index] == 'E')) {
+      hasExponent = true
       var exponent = index + 1
       if (exponent < end && (text[exponent] == '+' || text[exponent] == '-')) exponent++
       val exponentEnd = digitsFrom(exponent)
       if (exponentEnd == exponent) return false
       index = exponentEnd
     }
-    return index == end
+    if (index != end) return false
+    // Ordinary bounded integer/fraction spellings cannot overflow binary64.
+    // Avoid allocating and parsing them twice on the common cell path.
+    val tokenLength = end - start
+    return (!hasExponent && tokenLength <= 308) || text.substring(start, end).toDoubleOrNull()?.isFinite() == true
   }
 
   // Eight units per JSON value, plus UTF-8 bytes in keys and string values.
@@ -216,6 +222,7 @@ internal object SwiftTUIWireBudget {
       var end = 0
       for (index in 0 until cells.length()) {
         val cell = cells.optJSONArray(index) ?: return false
+        if (cell.length() != HostContract.CELL_ARITY) return false
         val x = cell.exactInt(0) ?: return false
         val span = cell.exactInt(2) ?: return false
         val style = cell.exactInt(3) ?: return false
@@ -237,6 +244,7 @@ internal object SwiftTUIWireBudget {
       val seen = mutableSetOf<Int>()
       for (index in 0 until rows.length()) {
         val entry = rows.optJSONArray(index) ?: return false
+        if (entry.length() != HostContract.DELTA_ROW_ARITY) return false
         val y = entry.exactInt(0) ?: return false
         if (y !in 0 until height || !seen.add(y) ||
           !cells(entry.optJSONArray(1) ?: return false)) return false
@@ -248,6 +256,7 @@ internal object SwiftTUIWireBudget {
         val image = images.optJSONObject(index) ?: return false
         if (!fitsUTF8(image.optString("id"), 1024)) return false
         image.optJSONArray("pixelSize")?.let { size ->
+          if (size.length() != HostContract.SIZE_ARITY) return false
           val w = size.exactInt(0) ?: return false
           val h = size.exactInt(1) ?: return false
           if (w !in 0..RASTER_DIMENSION || h !in 0..RASTER_DIMENSION || w.toLong() * h > RASTER_PIXELS)
@@ -262,22 +271,27 @@ internal object SwiftTUIWireBudget {
       if (record.has(key) && (record.exactInt(key) ?: return false) !in 0..GRID_DIMENSION) return false
     }
     if (!grid(record.optInt("preferredGridWidth", 0), record.optInt("preferredGridHeight", 0))) return false
-    for (rows in listOf(record.optJSONArray("links"), record.optJSONObject("damage")?.optJSONArray("textRows"))) {
+    for ((rows, arity) in listOf(
+      record.optJSONArray("links") to HostContract.LINK_RUN_ARITY,
+      record.optJSONObject("damage")?.optJSONArray("textRows") to HostContract.TEXT_RANGE_ARITY
+    )) {
       if (rows == null) continue
       if (rows.length() > height) return false
       val seen = mutableSetOf<Int>()
       for (index in 0 until rows.length()) {
         val entry = rows.optJSONArray(index) ?: return false
+        if (entry.length() != HostContract.TEXT_ROW_ARITY) return false
         val y = entry.exactInt(0) ?: return false
         val ranges = entry.optJSONArray(1) ?: return false
         if (y !in 0 until height || !seen.add(y) || ranges.length() > width) return false
         var end = 0L
         for (rangeIndex in 0 until ranges.length()) {
           val range = ranges.optJSONArray(rangeIndex) ?: return false
+          if (range.length() != arity) return false
           val start = range.exactInt(0)?.toLong() ?: return false
           val value = range.exactInt(1)?.toLong() ?: return false
-          val stop = if (range.length() == 3) start + value else value
-          if (start < 0 || (range.length() == 3 && start < end) || stop < start || stop > width) return false
+          val stop = if (arity == HostContract.LINK_RUN_ARITY) start + value else value
+          if (start < 0 || (arity == HostContract.LINK_RUN_ARITY && start < end) || stop < start || stop > width) return false
           end = stop
         }
       }

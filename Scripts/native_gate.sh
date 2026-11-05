@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # swift-tui-android native gate: the host library's JVM unit tests + plugin
-# validation. NDK-free and no Swift toolchain (the Swift cross-build + emulator
-# smoke remain a manual / fast-follow lane), so this needs only a JDK and the
-# Android SDK (compileSdk).
+# validation, plus a portable C/C++ caller for the JNI ABI loader. NDK-free and
+# no Swift toolchain; needs a JDK, Android SDK (compileSdk), Python 3 and host
+# C/C++ compilers. Installed native-library qualification runs separately.
 
 script_source="${BASH_SOURCE[0]}"
 if command -v realpath >/dev/null 2>&1; then
@@ -41,6 +41,8 @@ if [[ ! -d "${ANDROID_HOME}" ]]; then
   printf 'swift-tui-android native gate: Android SDK not found at %s (set ANDROID_HOME)\n' "$ANDROID_HOME" >&2
   exit 1
 fi
+
+python3 Scripts/test_abi_loader.py
 
 exec ./gradlew --no-daemon --console=plain \
   :swift-tui-host:testDebugUnitTest \

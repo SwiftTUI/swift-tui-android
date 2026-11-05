@@ -244,6 +244,14 @@ public func swift_tui_android_create_host() -> Int64 {
 }
 ```
 
+The JNI loader resolves the required host operations once, before installing the
+executor and calling your factory. It checks the sized ABI-info export when
+present (ABI 1, 64-bit handles/scalars and 32-bit counts). Pre-query libraries
+are accepted only when every required operation exists. Missing optional
+operations remain unavailable. Startup failures raise `UnsatisfiedLinkError`
+with an `android.abi.*` code and the missing requirement. The fixed-width header
+is [`swift_tui_android.h`](swift-tui-host/src/main/jni/swift_tui_android.h).
+
 **Mount the host** in Compose:
 
 ```kotlin
