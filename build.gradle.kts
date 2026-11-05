@@ -3,10 +3,14 @@ plugins {
   id("org.jetbrains.kotlin.plugin.compose") version "2.4.10" apply false
 }
 
-// The published AAR and the Gradle plugin share the org's coordinated version.
+// The AAR, plugin, and marker form one Android release unit.
 allprojects {
   group = "sh.swifttui"
   version = "0.20.1"
+  tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+  }
 }
 
 // Both publishable modules serve to the GitHub Pages static Maven repo

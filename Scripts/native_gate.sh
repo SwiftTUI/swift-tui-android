@@ -43,6 +43,7 @@ if [[ ! -d "${ANDROID_HOME}" ]]; then
 fi
 
 python3 Scripts/test_abi_loader.py
+python3 Scripts/test_maven_release.py
 
 exec ./gradlew --no-daemon --console=plain \
   :swift-tui-host:testDebugUnitTest \
