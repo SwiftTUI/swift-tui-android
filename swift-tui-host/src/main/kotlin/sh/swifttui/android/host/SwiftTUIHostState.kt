@@ -31,7 +31,7 @@ class SwiftTUIHostState internal constructor(
     private set
 
   private var handle by mutableLongStateOf(0L)
-  private var nextAccessibilityRequestID = 0L
+  private val accessibilityRequests = SwiftTUIAccessibilityRequests()
   private var lastResize: HostResize? = null
   private val missingImagePayloadIds = linkedSetOf<String>()
   private val webSurfaceSession = SwiftTUIWebSurfaceSession()
@@ -55,6 +55,7 @@ class SwiftTUIHostState internal constructor(
     // declaration selects the converged web-surface wire, so the decoder
     // session's delta baseline resets with the scene.
     missingImagePayloadIds.clear()
+    accessibilityRequests.reset()
     framePoller.reset()
     frame = null
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
@@ -63,6 +64,7 @@ class SwiftTUIHostState internal constructor(
   }
 
   fun stop() {
+    accessibilityRequests.reset()
     val currentHandle = handle
     if (currentHandle != 0L) {
       SwiftTUIJni.stop(currentHandle)
@@ -70,6 +72,7 @@ class SwiftTUIHostState internal constructor(
   }
 
   fun destroy() {
+    accessibilityRequests.reset()
     val currentHandle = handle
     handle = 0L
     frame = null
@@ -124,8 +127,11 @@ class SwiftTUIHostState internal constructor(
     val node = frame?.accessibilityNodes?.firstOrNull { it.actionTarget == request.target }
     if (currentHandle == 0L || node == null || node.hidden || !node.isEnabled ||
       request.action !in node.actions) return false
-    val bytes = request.encode(++nextAccessibilityRequestID) ?: return false
-    return SwiftTUIJni.accessibilityAction(currentHandle, bytes, bytes.size) == 1
+    val id = accessibilityRequests.issue(request.target) ?: return false
+    val bytes = request.encode(id)
+    val accepted = bytes != null && SwiftTUIJni.accessibilityAction(currentHandle, bytes, bytes.size) == 1
+    if (!accepted) accessibilityRequests.cancel(id)
+    return accepted
   }
 
   internal fun reportMissingImagePayload(id: String) {
@@ -200,7 +206,8 @@ class SwiftTUIHostState internal constructor(
       SwiftTUIFramePollResult.None -> Unit
       is SwiftTUIFramePollResult.Frame -> {
         if (result.shouldPublishOver(frame)) {
-          frame = result.value
+          accessibilityRequests.retainTargets(result.value.accessibilityNodes.mapNotNull { it.actionTarget }.toSet())
+          frame = result.value.copy(accessibilityActionResponse = accessibilityRequests.accept(result.value.accessibilityActionResponse))
         }
         lastError = null
       }

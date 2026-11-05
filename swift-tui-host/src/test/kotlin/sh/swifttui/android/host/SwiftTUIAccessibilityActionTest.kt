@@ -25,6 +25,43 @@ class SwiftTUIAccessibilityActionTest {
     assertNull(JSONObject("""{"requestID":7,"target":"x","result":"accepted"}""").toAccessibilityActionResponse())
   }
 
+  @Test fun responseCorrelationRejectsUnissuedMismatchedExpiredAndPriorSessionIDs() {
+    var now = 0L
+    val requests = SwiftTUIAccessibilityRequests { now }
+    val first = requests.issue("a")!!
+    val second = requests.issue("b")!!
+    fun response(id: String, target: String) = SwiftTUIAccessibilityActionResponse(id, target, "accepted")
+    for (id in listOf("18446744073709551615", "18446744073709551616", "+1", "", "１")) {
+      assertNull(requests.accept(response(id, "a")))
+    }
+    assertNull(requests.accept(response(first.toString(), "b")))
+    assertNotNull(requests.accept(response(second.toString(), "b")))
+    assertNull(requests.accept(response(second.toString(), "b")))
+    assertNotNull(requests.accept(response("000$first", "a")))
+    val prior = requests.issue("a")!!
+    requests.reset()
+    val current = requests.issue("a")!!
+    assertNotEquals(prior, current)
+    assertNull(requests.accept(response(prior.toString(), "a")))
+    now = 30_000
+    assertNull(requests.accept(response(current.toString(), "a")))
+    val oldest = requests.issue("a")!!
+    repeat(256) { requests.issue("a") }
+    assertNull(requests.accept(response(oldest.toString(), "a")))
+    val gone = requests.issue("gone")!!
+    requests.retainTargets(setOf("a"))
+    assertNull(requests.accept(response(gone.toString(), "gone")))
+  }
+
+  @Test fun optionalInvalidReplyDoesNotDiscardAFrame() {
+    for (id in listOf("18446744073709551616", "+1", "", "１")) {
+      val frame = SwiftTUIWebSurfaceSession().decode("\u001Esurface:" +
+        """{"version":2,"width":1,"height":1,"styles":[null],"rows":[[[0,"x",1,0]]],"accessibilityActionResponse":{"requestID":"$id","target":"x","result":"accepted"}}""")!!
+      assertNull(frame.accessibilityActionResponse)
+      assertEquals("x", frame.cells.single().character)
+    }
+  }
+
   @Test fun sharedFixtureDecodesActionsAndSecureFieldsNeverExposeWireValues() {
     val fixture = javaClass.getResourceAsStream("/web-surface-totality.txt")!!
       .bufferedReader().readText().replace("\\u001E", "\u001E")

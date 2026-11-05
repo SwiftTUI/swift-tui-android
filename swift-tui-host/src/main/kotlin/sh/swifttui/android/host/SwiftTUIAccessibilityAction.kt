@@ -54,7 +54,8 @@ internal fun JSONObject.toAccessibilityActionResponse(): SwiftTUIAccessibilityAc
   val id = opt("requestID") as? String ?: return null
   val target = opt("target") as? String ?: return null
   val result = opt("result") as? String ?: return null
-  if (id.toULongOrNull() == null || target.isEmpty() || result !in setOf(
+  val canonicalID = normalizeWireUInt64(id) ?: return null
+  if (target.isEmpty() || result !in setOf(
     "accepted", "staleTarget", "disabled", "outOfScope", "unsupported", "invalidValue")) return null
-  return SwiftTUIAccessibilityActionResponse(id, target, result)
+  return SwiftTUIAccessibilityActionResponse(canonicalID, target, result)
 }
