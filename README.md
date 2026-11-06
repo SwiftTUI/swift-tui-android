@@ -4,7 +4,7 @@
 
 ![Swift 6.4](https://img.shields.io/badge/Swift-6.4-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Android%20(minSdk%2028)-3DDC84?logo=android&logoColor=white)
-![Status](https://img.shields.io/badge/status-0.20.1%20pre--release-DAA520)
+![Status](https://img.shields.io/badge/status-0.21.0%20pre--release-DAA520)
 ![License](https://img.shields.io/badge/license-MIT-3DA639)
 
 `swift-tui-android` is the Android host for [SwiftTUI](https://swifttui.sh). The
@@ -26,12 +26,12 @@ for metadata, framing, and bitmap limits.
 
 **See it on a device:** the counter demo's
 [`AndroidExample`](https://github.com/SwiftTUI/swift-tui-counter-demo/tree/main/AndroidExample)
-consumes these exact artifacts — plugin `0.20.1` and
-`sh.swifttui:android-host:0.20.1` — and runs on an emulator or phone. It hosts
+consumes these exact artifacts — plugin `0.21.0` and
+`sh.swifttui:android-host:0.21.0` — and runs on an emulator or phone. It hosts
 the same `CounterView` that the terminal, SwiftUI, and browser hosts run, so it
 shows the one-source-many-hosts claim rather than describing it.
 
-> Pre-1.0 (0.20.1 beta). Published via GitHub Pages until the Gradle
+> Pre-1.0 (0.21.0 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
 
 > Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
@@ -131,7 +131,7 @@ check fails the build with that explanation instead.
 plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.plugin.compose")
-  id("sh.swifttui.android") version "0.20.1"
+  id("sh.swifttui.android") version "0.21.0"
 }
 
 android {
@@ -175,7 +175,7 @@ android {
 swiftTuiAndroidHost { productName = "MyAppHost" }
 
 dependencies {
-  implementation("sh.swifttui:android-host:0.20.1")
+  implementation("sh.swifttui:android-host:0.21.0")
   implementation(platform("androidx.compose:compose-bom:2026.08.00"))
   implementation("androidx.activity:activity-compose:1.13.0")
 }
@@ -340,3 +340,8 @@ unchanged gaps and the clean portion of any overlapping wide cell. Glyph and
 decoration ink stays inside its declared cell span on both full and partial
 paints. Italic or fallback-font overhang outside that span is now clipped even
 on full paints; this is a rendering behavior change with no public API change.
+
+## Version compatibility
+
+See the [compatibility policy](docs/COMPATIBILITY.md) for supported minor lines,
+independent dependency adoption, and experimental interfaces.
