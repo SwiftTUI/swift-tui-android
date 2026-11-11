@@ -6,7 +6,7 @@ plugins {
 // The AAR, plugin, and marker form one Android release unit.
 allprojects {
   group = "sh.swifttui"
-  version = "0.21.0"
+  version = "0.22.0"
   tasks.withType<AbstractArchiveTask>().configureEach {
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
