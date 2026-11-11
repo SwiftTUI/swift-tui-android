@@ -40,9 +40,10 @@ image content identity; alpha-only frames replay the cached bitmap.
 
 ## Releases
 
-Versions are lockstep with the SwiftTUI org; the coordination root owns the
-release sequence. Publication currently targets the GitHub Pages Maven
-repository (`swifttui.github.io/swift-tui-android`) as the interim
+The Android host versions independently; the coordination root owns component
+release qualification. Its named C/JNI and wire contracts determine compatibility,
+not matching framework version numbers. See [COMPATIBILITY.md](COMPATIBILITY.md).
+Publication currently targets the GitHub Pages Maven repository (`swifttui.github.io/swift-tui-android`) as the interim
 distribution channel.
 
 The Swift 6.4 Android runtime requires NDK 30's C++ shared runtime. NDK 27
