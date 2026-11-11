@@ -201,7 +201,7 @@ let package = Package(
     .library(name: "MyAppHost", type: .dynamic, targets: ["MyAppHost"])
   ],
   dependencies: [
-    .package(url: "https://github.com/SwiftTUI/swift-tui.git", exact: "0.20.1")
+    .package(url: "https://github.com/SwiftTUI/swift-tui.git", .upToNextMajor(from: "0.21.0"))
   ],
   targets: [
     .target(
