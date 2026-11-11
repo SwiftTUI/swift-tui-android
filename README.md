@@ -343,5 +343,5 @@ on full paints; this is a rendering behavior change with no public API change.
 
 ## Version compatibility
 
-See the [compatibility policy](docs/COMPATIBILITY.md) for supported minor lines,
+See the [compatibility policy](docs/COMPATIBILITY.md) for supported major lines,
 independent dependency adoption, and experimental interfaces.
