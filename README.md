@@ -342,6 +342,99 @@ swiftTuiAndroidHost {
 }
 ```
 
+## Importing a document
+
+A SwiftTUI `.dropDestination` receives filesystem paths. An Android document is
+a `content://` URI, which is not a path. `SwiftTUIHostState.importDocument`
+bridges the two for one document from the system document picker: it copies the
+document into a file the host owns and delivers that file's path to the running
+app as one file drop. The app shows the picker; the host does the import.
+
+```kotlin
+val hostState = rememberSwiftTUIHostState()
+val policy = remember { SwiftTUIDocumentImportPolicy() }
+val scope = rememberCoroutineScope()
+val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+  scope.launch {
+    when (val result = hostState.importDocument(uri, policy)) {
+      is SwiftTUIDocumentImportResult.Delivered -> { /* result.document */ }
+      SwiftTUIDocumentImportResult.Cancelled -> { /* the picker was dismissed */ }
+      is SwiftTUIDocumentImportResult.Rejected -> { /* result.reason */ }
+    }
+  }
+}
+
+// From a button, a menu, wherever the app offers it:
+picker.launch(policy.acceptedMimeTypes.toTypedArray())
+```
+
+Call `importDocument` on the main thread, as for the rest of `SwiftTUIHostState`.
+The provider and the disk are read on `Dispatchers.IO`; the call suspends until
+the document is delivered or refused.
+
+**What is imported.** One `content://` URI per call, read through the access the
+picker granted. Other schemes are refused unread. The host takes no persistable
+URI permission: it copies the bytes while the grant is live, and the app only
+ever sees the copy. A stream that cannot seek or does not report its size is
+fine; the copy is sequential.
+
+**Policy.** `SwiftTUIDocumentImportPolicy` bounds the copy:
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `maxDocumentBytes` | 16 MiB | Largest document. Enforced on the bytes read, so a missing or wrong reported size cannot exceed it; at most one byte past the cap is read. |
+| `maxRetainedBytes` | 64 MiB | Most imported bytes one host keeps on disk. An import that would exceed it is refused; earlier imports stay valid. |
+| `acceptedMimeTypes` | `text/*`, `application/json`, `image/png`, `image/jpeg`, `image/gif` | MIME allow-list (exact types, `type/*`, or `*/*`). Pass it to the picker too; the import checks again because a picker filter is advisory. A provider that reports no type, or `application/octet-stream`, is typed by the display name's extension. |
+
+**Outcomes.** Every call ends in exactly one of these, and only `Delivered`
+leaves a file behind or sends anything to the app:
+
+| Result | When |
+| --- | --- |
+| `Delivered(document)` | The whole document was copied and its path queued for the app once. `document` carries the path, display name, MIME type and size. |
+| `Cancelled` | The URI was `null`: the picker was dismissed. |
+| `Rejected(UNSUPPORTED_SOURCE)` | The URI is not a `content://` URI. |
+| `Rejected(UNSUPPORTED_TYPE)` | The type is outside the allow-list. The content is not opened. |
+| `Rejected(TOO_LARGE)` | The document exceeds `maxDocumentBytes`. |
+| `Rejected(STORAGE_BUDGET_EXCEEDED)` | Keeping it would exceed `maxRetainedBytes`. |
+| `Rejected(PERMISSION_DENIED)` | Access was never granted, or was revoked, before or during the read. |
+| `Rejected(NOT_FOUND)` | The document no longer exists or cannot be opened as a byte stream. |
+| `Rejected(IO_FAILURE)` | The provider or local storage failed, or the stream ended before its reported size. |
+| `Rejected(IMPORT_IN_PROGRESS)` | Another import on this host has not finished. Imports never overlap. |
+| `Rejected(HOST_NOT_RUNNING)` | The host is not running, or stopped before delivery. |
+
+Cancelling the calling coroutine also leaves no file and delivers nothing. Later
+releases may add rejection reasons; keep an `else` branch when switching on
+`reason`.
+
+**Name and type.** The copy keeps the provider's display name as its file name,
+reduced to one safe path component: directory parts, control and
+direction-override characters and leading dots are removed, and the name is
+capped at 120 UTF-8 bytes with its extension kept. Spaces, quotes and non-ASCII
+letters survive. A name with no extension gains the one registered for the MIME
+type, because a path carries its type only in its extension.
+
+**Where the copy lives, and for how long.** Under the app's cache directory, at
+`swifttui-imports/<host session>/<n>/<display name>`. It is written to a
+`.partial` file and renamed into place, so a delivered path always names a
+complete file. The path stays valid until the host state is destroyed
+(`rememberSwiftTUIHostState` does that when it leaves the composition) or the
+app calls `clearImportedDocuments()`; the host deletes the files then. Files a
+killed process left behind are deleted when the next host starts. The operating
+system may also evict cache files when storage runs short. Importing unchanged
+content under the same name again delivers the retained file's path a second
+time and keeps one copy. An app that hosts SwiftTUI in more than one process
+shares this directory between them; that arrangement is not supported.
+
+**Delivery.** The path reaches the runtime as the `file://` paste a terminal
+produces for a dropped file, over the existing input channel. As on a terminal,
+`Delivered` does not report whether a drop destination took the path, and a
+drop that no destination claims falls through to the runtime's text-paste
+handling.
+
+Selecting several documents, share-sheet (`ACTION_SEND`) intake and platform
+drag-and-drop are not part of this route.
+
 ## Requirements
 
 - Install the Android SDK Platform **37.1** and NDK `30.0.16248370`: it strips

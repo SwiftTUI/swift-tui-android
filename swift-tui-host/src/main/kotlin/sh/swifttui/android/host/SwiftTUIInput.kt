@@ -127,4 +127,58 @@ object SwiftTUIInput {
     }
     return "$PASTE_START$sanitized$PASTE_END".encodeToByteArray()
   }
+
+  /**
+   * Encodes one absolute filesystem path as the bracketed paste a terminal
+   * emits when a file is dropped on it: a single `file://` URL. The runtime's
+   * dropped-path parser decodes the URL back to the exact path and offers it to
+   * `.dropDestination` scopes before treating the paste as text.
+   *
+   * Every UTF-8 byte outside the RFC 3986 unreserved set (and `/`) is
+   * percent-encoded, so spaces, quotes, backslashes, `%` and non-ASCII names
+   * cannot split the token or be reinterpreted by the paste tokenizer. Returns
+   * no bytes for a path that is not absolute, contains NUL, or is not
+   * well-formed UTF-16 (the encoded bytes would name a different file).
+   */
+  fun fileDrop(absolutePath: String): ByteArray {
+    if (!absolutePath.startsWith("/") || absolutePath.contains('\u0000') ||
+      !absolutePath.isWellFormedUtf16()
+    ) {
+      return ByteArray(0)
+    }
+    val url = StringBuilder("file://")
+    for (byte in absolutePath.encodeToByteArray()) {
+      val code = byte.toInt() and 0xFF
+      val character = code.toChar()
+      if (character in 'A'..'Z' || character in 'a'..'z' || character in '0'..'9' ||
+        character == '-' || character == '.' || character == '_' || character == '~' ||
+        character == '/'
+      ) {
+        url.append(character)
+      } else {
+        url.append('%')
+        url.append(HEX_DIGITS[code shr 4])
+        url.append(HEX_DIGITS[code and 0x0F])
+      }
+    }
+    return "$PASTE_START$url$PASTE_END".encodeToByteArray()
+  }
+
+  private const val HEX_DIGITS = "0123456789ABCDEF"
+
+  private fun String.isWellFormedUtf16(): Boolean {
+    var index = 0
+    while (index < length) {
+      val character = this[index]
+      when {
+        character.isHighSurrogate() -> {
+          if (index + 1 >= length || !this[index + 1].isLowSurrogate()) return false
+          index += 2
+        }
+        character.isLowSurrogate() -> return false
+        else -> index += 1
+      }
+    }
+    return true
+  }
 }

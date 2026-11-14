@@ -89,6 +89,18 @@ The Kotlin host decodes image opacity from the shared web-surface record and
 applies it through the Compose canvas paint. Bitmap cache keys remain based on
 image content identity; alpha-only frames replay the cached bitmap.
 
+## Document import tests
+
+`SwiftTUIHostState.importDocument` is tested in three layers. The JVM tests
+(`SwiftTUIDocumentImportStoreTest`, `SwiftTUIDocumentImporterTest`,
+`SwiftTUIDocumentNamesTest`) run the copy, the size and type policy, cleanup,
+and the once-or-nothing delivery contract against scripted document sources and
+a temporary directory. `SwiftTUIInputTest` pins the `file://` drop encoding;
+swift-tui's `DroppedPathParsingTests` pins the same vector on the parsing side,
+so change both together. The `ContentResolver` adapter
+(`SwiftTUIContentDocument`) has no JVM test: it only runs on a device, against
+a real provider.
+
 ## Releases
 
 The Android host versions independently; the coordination root owns component

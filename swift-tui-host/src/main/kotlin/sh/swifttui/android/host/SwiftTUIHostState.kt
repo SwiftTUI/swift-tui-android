@@ -1,5 +1,6 @@
 package sh.swifttui.android.host
 
+import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,7 +26,8 @@ private data class HostResize(
 class SwiftTUIHostState internal constructor(
   private val createHost: () -> Long,
   private val clipboard: SwiftTUIClipboard? = null,
-  links: SwiftTUILinkDispatcher? = null
+  links: SwiftTUILinkDispatcher? = null,
+  private val documents: SwiftTUIHostDocuments? = null
 ) {
   var frame by mutableStateOf<SwiftTUIFrame?>(null)
     private set
@@ -34,6 +36,17 @@ class SwiftTUIHostState internal constructor(
     private set
 
   private var handle by mutableLongStateOf(0L)
+  // The thread the native host was created on. Every native call belongs to it.
+  private var hostThread: Thread? = null
+  private var sceneRunning = false
+  private val documentImporter = documents?.let { documents ->
+    SwiftTUIDocumentImporter(
+      store = documents.store,
+      isHostRunning = { handle != 0L && sceneRunning },
+      deliver = ::sendInput,
+      isHostThread = { Thread.currentThread() === hostThread }
+    )
+  }
   private val accessibilityRequests = SwiftTUIAccessibilityRequests()
   private var lastResize: HostResize? = null
   private val missingImagePayloadIds = linkedSetOf<String>()
@@ -52,6 +65,11 @@ class SwiftTUIHostState internal constructor(
         lastError = "SwiftTUI host could not be created."
         return
       }
+      hostThread = Thread.currentThread()
+      // A new native host is a new import session: the documents of an earlier
+      // host, and of an earlier process that died without cleaning up, go.
+      documents?.store?.beginSession()
+      documents?.store?.sweepStaleSessions()
     }
     // Declare wire capabilities before the scene starts — the Swift host
     // rejects declarations once running, and an older host library without
@@ -68,10 +86,12 @@ class SwiftTUIHostState internal constructor(
     // without its dispatcher registered.
     linkRouter?.attach(handle)
     SwiftTUIJni.start(handle)
+    sceneRunning = true
   }
 
   fun stop() {
     accessibilityRequests.reset()
+    sceneRunning = false
     val currentHandle = handle
     if (currentHandle != 0L) {
       SwiftTUIJni.stop(currentHandle)
@@ -80,6 +100,9 @@ class SwiftTUIHostState internal constructor(
 
   fun destroy() {
     accessibilityRequests.reset()
+    sceneRunning = false
+    // The runtime that could read the imported documents is going away.
+    documents?.store?.endSession()
     val currentHandle = handle
     handle = 0L
     frame = null
@@ -158,6 +181,79 @@ class SwiftTUIHostState internal constructor(
   fun paste() {
     val text = clipboard?.read() ?: return
     sendInput(SwiftTUIInput.bracketedPaste(text))
+  }
+
+  /**
+   * Imports the document a system picker returned and delivers it to the
+   * running app as one file drop.
+   *
+   * The app decides when to show the picker, for example with
+   * `ActivityResultContracts.OpenDocument` and the policy's
+   * [SwiftTUIDocumentImportPolicy.acceptedMimeTypes]; this function is the
+   * import step for the single `content://` URI that comes back. Pass `null`
+   * for a dismissed picker.
+   *
+   * **Materialization.** A drop destination receives a filesystem path, and a
+   * `content://` URI is not one. The document is therefore read through the
+   * access Android granted the app and copied into a host-owned file under the
+   * app's cache directory, bounded by [policy]. Only that file's path reaches
+   * the runtime, as the same `file://` paste a terminal produces for a dropped
+   * file. No persistable URI permission is taken.
+   *
+   * **Lifetime.** The file stays readable at its delivered path until this
+   * host state is destroyed, or until [clearImportedDocuments]. The host
+   * deletes it then, and deletes at the next host start whatever a killed
+   * process left behind. The operating system may also evict cache files when
+   * storage runs short.
+   *
+   * **Threading.** Call this on the main thread, as for every other function
+   * of this class. Provider and disk access run on `Dispatchers.IO`; the
+   * function suspends until the document is delivered or refused.
+   *
+   * **Outcomes.** Exactly one of:
+   * - [SwiftTUIDocumentImportResult.Delivered]: the complete document was
+   *   copied and its path was queued for the app once. Delivery does not report
+   *   whether a drop destination took it; as on a terminal, a drop that no
+   *   destination claims falls through to the runtime's text-paste handling.
+   * - [SwiftTUIDocumentImportResult.Cancelled]: [uri] was `null`.
+   * - [SwiftTUIDocumentImportResult.Rejected]: nothing was delivered and no
+   *   file, partial or whole, was kept. See [SwiftTUIDocumentImportRejection].
+   *
+   * Cancelling the calling coroutine also leaves no file and delivers nothing.
+   * Imports on one host never overlap: a call made while another is in flight
+   * is rejected. Importing unchanged content under the same name again
+   * delivers the already retained file rather than keeping a second copy.
+   */
+  suspend fun importDocument(
+    uri: Uri?,
+    policy: SwiftTUIDocumentImportPolicy = SwiftTUIDocumentImportPolicy()
+  ): SwiftTUIDocumentImportResult {
+    val documents = documents
+    val importer = documentImporter
+    if (documents == null || importer == null) {
+      return SwiftTUIDocumentImportResult.Rejected(
+        SwiftTUIDocumentImportRejection.HOST_NOT_RUNNING,
+        "this host state has no document storage"
+      )
+    }
+    if (uri == null) {
+      return importer.import(null, policy)
+    }
+    val source = documents.source(uri)
+      ?: return SwiftTUIDocumentImportResult.Rejected(
+        SwiftTUIDocumentImportRejection.UNSUPPORTED_SOURCE,
+        "only content:// URIs are imported"
+      )
+    return importer.import(source, policy)
+  }
+
+  /**
+   * Deletes every document this host has imported and frees its retained-bytes
+   * budget. Call it only when the running app no longer reads the paths it was
+   * given; a path delivered earlier stops resolving.
+   */
+  fun clearImportedDocuments() {
+    documents?.store?.clear()
   }
 
   suspend fun pollFrames() {
@@ -271,7 +367,8 @@ fun rememberSwiftTUIHostState(links: SwiftTUILinkDispatcher): SwiftTUIHostState 
     SwiftTUIHostState(
       createHost = { SwiftTUIJni.createHost() },
       clipboard = AndroidSystemClipboard(context),
-      links = links
+      links = links,
+      documents = SwiftTUIHostDocuments.android(context)
     )
   }
 
