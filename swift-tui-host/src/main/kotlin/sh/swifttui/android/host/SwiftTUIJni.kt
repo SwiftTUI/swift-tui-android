@@ -21,6 +21,9 @@ internal object SwiftTUIJni {
   external fun requestResync(handle: Long, json: ByteArray, count: Int): Int
   external fun copyLatestFrame(handle: Long, outBuffer: ByteArray?, capacity: Int): Int
   external fun copyClipboardText(handle: Long, outBuffer: ByteArray?, capacity: Int): Int
+
+  /** `-1` when the host library lacks the open-link operation; see [SwiftTUILinkRouter]. */
+  external fun copyOpenLink(handle: Long, outBuffer: ByteArray?, capacity: Int): Int
   external fun accessibilityAction(handle: Long, input: ByteArray, count: Int): Int
   external fun sendInput(handle: Long, input: ByteArray, count: Int)
 }

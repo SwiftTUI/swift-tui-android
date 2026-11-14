@@ -196,6 +196,40 @@ jint nativeCopyClipboardText(
   return needed;
 }
 
+jint nativeCopyOpenLink(
+  JNIEnv* env,
+  jobject,
+  jlong handle,
+  jbyteArray outBuffer,
+  jint capacity
+) {
+  // -1, which the operation itself never returns, tells Kotlin the library
+  // predates it: Kotlin then keeps opening tapped hyperlinks on its own.
+  auto copyOpenLink = gHost.copyOpenLink;
+  if (copyOpenLink == nullptr) {
+    return -1;
+  }
+
+  if (outBuffer == nullptr || capacity <= 0) {
+    return copyOpenLink(static_cast<int64_t>(handle), nullptr, 0);
+  }
+
+  jsize arrayLength = env->GetArrayLength(outBuffer);
+  jint boundedCapacity = capacity < arrayLength ? capacity : arrayLength;
+  jbyte* bytes = env->GetByteArrayElements(outBuffer, nullptr);
+  if (bytes == nullptr) {
+    return 0;
+  }
+
+  jint needed = copyOpenLink(
+    static_cast<int64_t>(handle),
+    reinterpret_cast<uint8_t*>(bytes),
+    static_cast<int32_t>(boundedCapacity)
+  );
+  env->ReleaseByteArrayElements(outBuffer, bytes, 0);
+  return needed;
+}
+
 void nativeSendInput(
   JNIEnv* env,
   jobject,
@@ -322,6 +356,7 @@ const JNINativeMethod kMethods[] = {
   {"resize", "(JIIDD)V", reinterpret_cast<void*>(nativeResize)},
   {"copyLatestFrame", "(J[BI)I", reinterpret_cast<void*>(nativeCopyLatestFrame)},
   {"copyClipboardText", "(J[BI)I", reinterpret_cast<void*>(nativeCopyClipboardText)},
+  {"copyOpenLink", "(J[BI)I", reinterpret_cast<void*>(nativeCopyOpenLink)},
   {"sendInput", "(J[BI)V", reinterpret_cast<void*>(nativeSendInput)},
   {"declareCapabilities", "(J[BI)I", reinterpret_cast<void*>(nativeDeclareCapabilities)},
   {"accessibilityAction", "(J[BI)I", reinterpret_cast<void*>(nativeAccessibilityAction)},

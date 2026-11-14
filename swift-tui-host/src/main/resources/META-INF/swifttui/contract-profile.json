@@ -9,6 +9,6 @@
   "schemaSHA256": "b03076c14b62ced68ada2fcf232d63c4e4d935431c967cde7fc5df49db52b064",
   "generatedFiles": {
     "swift-tui-host/src/main/kotlin/sh/swifttui/android/host/HostContract.generated.kt": "a0e40f9d86cb1e5116c2545f0b067d054f1a7929b0e861839b8775fa5a0570d0",
-    "swift-tui-host/src/main/jni/swift_tui_android.h": "1bae1758e16e7f9974282be5030de0b01c20069791d7fb79b2d0249598d689c8"
+    "swift-tui-host/src/main/jni/swift_tui_android.h": "b049fb27492de5649672a05a6f141b1b80e80bac418c0375366e4fd4ca35727c"
   }
 }

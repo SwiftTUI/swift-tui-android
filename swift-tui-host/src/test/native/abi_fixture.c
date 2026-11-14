@@ -44,3 +44,8 @@ void swift_tui_android_send_input(int64_t h, const uint8_t *b, int32_t c) {
 int32_t swift_tui_android_copy_latest_frame(int64_t h, uint8_t *b, int32_t c) {
   (void)h; (void)b; (void)c; return 0;
 }
+#ifdef WITH_OPEN_LINK
+int32_t swift_tui_android_copy_open_link(int64_t h, uint8_t *b, int32_t c) {
+  (void)h; (void)b; (void)c; return 7;
+}
+#endif

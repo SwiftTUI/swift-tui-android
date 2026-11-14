@@ -1,5 +1,6 @@
 package sh.swifttui.android.host
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -9,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -22,7 +24,8 @@ private data class HostResize(
 
 class SwiftTUIHostState internal constructor(
   private val createHost: () -> Long,
-  private val clipboard: SwiftTUIClipboard? = null
+  private val clipboard: SwiftTUIClipboard? = null,
+  links: SwiftTUILinkDispatcher? = null
 ) {
   var frame by mutableStateOf<SwiftTUIFrame?>(null)
     private set
@@ -35,6 +38,7 @@ class SwiftTUIHostState internal constructor(
   private var lastResize: HostResize? = null
   private val missingImagePayloadIds = linkedSetOf<String>()
   private val webSurfaceSession = SwiftTUIWebSurfaceSession()
+  private val linkRouter = links?.let { SwiftTUILinkRouter(it, SwiftTUIJni::copyOpenLink) }
   private val framePoller = SwiftTUIFramePoller(
     session = webSurfaceSession,
     copyLatestFrame = SwiftTUIJni::copyLatestFrame,
@@ -60,6 +64,9 @@ class SwiftTUIHostState internal constructor(
     frame = null
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
+    // Before the scene starts, so the runtime never sees a link activation
+    // without its dispatcher registered.
+    linkRouter?.attach(handle)
     SwiftTUIJni.start(handle)
   }
 
@@ -138,6 +145,15 @@ class SwiftTUIHostState internal constructor(
     missingImagePayloadIds.add(id)
   }
 
+  /**
+   * Reports the hyperlink a tap landed on. Opens it only for a host library
+   * without the open-link operation; otherwise the runtime owns that decision
+   * and this call does nothing.
+   */
+  internal fun linkTapped(uri: String) {
+    linkRouter?.tapped(uri)
+  }
+
   /** Reads the system clipboard and delivers it to the app as a bracketed paste. */
   fun paste() {
     val text = clipboard?.read() ?: return
@@ -149,6 +165,7 @@ class SwiftTUIHostState internal constructor(
       tickOnce()
       pollFrameOnce()
       drainClipboardWrite()
+      drainLinkRequests()
       delay(33L)
     }
   }
@@ -188,6 +205,14 @@ class SwiftTUIHostState internal constructor(
     }
   }
 
+  /** Dispatches the links the runtime asked this host to open, each once. */
+  private fun drainLinkRequests() {
+    val currentHandle = handle
+    if (currentHandle != 0L) {
+      linkRouter?.drain(currentHandle)
+    }
+  }
+
   private fun pollFrameOnce() {
     val currentHandle = handle
     if (currentHandle == 0L) {
@@ -217,13 +242,36 @@ class SwiftTUIHostState internal constructor(
   }
 }
 
+/**
+ * A host state that opens links under the default [SwiftTUILinkPolicy] through
+ * the composition's [LocalUriHandler], logging every activation that opened
+ * nothing.
+ */
 @Composable
 fun rememberSwiftTUIHostState(): SwiftTUIHostState {
+  val uriHandler = LocalUriHandler.current
+  val links = remember(uriHandler) {
+    SwiftTUILinkDispatcher(
+      opener = SwiftTUIUriHandlerLinkOpener(uriHandler),
+      onOutcome = ::logUnopenedLink
+    )
+  }
+  return rememberSwiftTUIHostState(links)
+}
+
+/**
+ * A host state whose link activations go through [links]: the app's own
+ * policy, opener and outcome listener. The dispatcher in effect when the state
+ * is first remembered is the one it keeps.
+ */
+@Composable
+fun rememberSwiftTUIHostState(links: SwiftTUILinkDispatcher): SwiftTUIHostState {
   val context = LocalContext.current
   val state = remember {
     SwiftTUIHostState(
       createHost = { SwiftTUIJni.createHost() },
-      clipboard = AndroidSystemClipboard(context)
+      clipboard = AndroidSystemClipboard(context),
+      links = links
     )
   }
 
@@ -239,4 +287,20 @@ fun rememberSwiftTUIHostState(): SwiftTUIHostState {
   }
 
   return state
+}
+
+/**
+ * The default record of a link that opened nothing. It names the outcome and
+ * the scheme only: a destination can carry a token or an address that does not
+ * belong in a device log.
+ */
+private fun logUnopenedLink(outcome: SwiftTUILinkOutcome) {
+  val reason = when (outcome) {
+    is SwiftTUILinkOutcome.Opened -> return
+    is SwiftTUILinkOutcome.Malformed -> "malformed destination"
+    is SwiftTUILinkOutcome.UnsupportedScheme -> "scheme '${outcome.scheme}' is not allowed"
+    is SwiftTUILinkOutcome.NoHandler -> "no app handles '${outcome.uri.substringBefore(':')}:'"
+    is SwiftTUILinkOutcome.Failed -> "opener failed with ${outcome.cause.javaClass.name}"
+  }
+  Log.w("SwiftTUILinks", "Link not opened: $reason")
 }

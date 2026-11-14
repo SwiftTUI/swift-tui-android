@@ -262,6 +262,19 @@ During the build, the plugin cross-compiles `MyAppHost` for `arm64-v8a`, renames
 the result to `libswift_tui_app_host.so`, and stages it plus the Swift runtime
 into `build/generated/swiftJniLibs` for the source set declared above.
 
+### Links
+
+The runtime decides when a `Link` is activated, so a custom `OpenLinkAction`
+and a disabled link behave as authored. The host opens the destination once,
+through `LocalUriHandler`, and only for an `http`, `https`, `mailto` or `tel`
+URI. Anything else, and a destination no app handles, opens nothing and leaves
+the app running. Pass your own `SwiftTUILinkDispatcher` to
+`rememberSwiftTUIHostState(links)` to change the allowed schemes, open links
+your own way, or observe each outcome. A Swift host library from swift-tui
+0.22.1 or earlier keeps the earlier behavior, where the host opens the
+hyperlink under a tap. See [docs/LINKS.md](docs/LINKS.md) for both routes, the
+full URI policy and the limitations.
+
 ### Where the Swift package goes
 
 `swiftTuiAndroidHost.packageDirectory` defaults to `../SwiftPackage`, relative to

@@ -36,7 +36,6 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -81,7 +80,6 @@ fun SwiftTUIHostView(
   val frame = state.frame
   val currentFrame by rememberUpdatedState(frame)
   val currentStyle by rememberUpdatedState(style)
-  val uriHandler = LocalUriHandler.current
   val keyboardController = LocalSoftwareKeyboardController.current
   var imeValue by remember { mutableStateOf(TextFieldValue("")) }
 
@@ -123,7 +121,9 @@ fun SwiftTUIHostView(
       .focusable()
       // Press / drag / release: a tap is down+up (a click); finger movement
       // becomes SGR motion drags, matching the SwiftUI host's touchesMoved ->
-      // .dragged mapping. A tap on a hyperlink cell opens the destination.
+      // .dragged mapping. The runtime decides whether a gesture activates a
+      // link; only a host library without the open-link operation leaves that
+      // to the tap rule below (see SwiftTUILinkRouter).
       // Keyed on Unit (not style) so a style change mid-gesture cannot cancel
       // the coroutine and drop the release; the latest metrics are read through
       // `currentStyle`.
@@ -132,6 +132,7 @@ fun SwiftTUIHostView(
           val down = awaitFirstDown(requireUnconsumed = false)
           val downColumn = SwiftTUIInput.cellColumn(down.position.x, currentStyle.cellWidthPx)
           val downRow = SwiftTUIInput.cellRow(down.position.y, currentStyle.cellHeightPx)
+          val downLink = currentFrame?.cellAt(downColumn, downRow)?.hyperlink
           state.sendInput(SwiftTUIInput.mouseDown(downColumn, downRow))
           // The down is left unconsumed so `focusable()` can claim focus on tap;
           // drag moves and the release are consumed to own the gesture.
@@ -168,12 +169,11 @@ fun SwiftTUIHostView(
             } else {
               state.sendInput(SwiftTUIInput.mouseUp(lastColumn, lastRow))
               change.consume()
-              if (!moved) {
-                val link = currentFrame?.cellAt(downColumn, downRow)?.hyperlink
-                if (!link.isNullOrBlank()) {
-                  runCatching { uriHandler.openUri(link) }
-                }
-              }
+              SwiftTUILinkTap.target(
+                pressed = downLink,
+                moved = moved,
+                released = currentFrame?.cellAt(downColumn, downRow)?.hyperlink
+              )?.let(state::linkTapped)
               break
             }
           }

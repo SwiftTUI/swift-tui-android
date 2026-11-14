@@ -22,6 +22,7 @@ struct HostFunctions {
   decltype(&swift_tui_android_request_resync) resync = nullptr;
   decltype(&swift_tui_android_accessibility_action) accessibility = nullptr;
   decltype(&swift_tui_android_diag) diagnostics = nullptr;
+  decltype(&swift_tui_android_copy_open_link) copyOpenLink = nullptr;
   bool legacy = false;
 
   using Resolver = void* (*)(void*, const char*);
@@ -66,6 +67,7 @@ struct HostFunctions {
     OPTIONAL(accessibility, "swift_tui_android_accessibility_action", SWIFT_TUI_ANDROID_OP_ACCESSIBILITY);
     OPTIONAL(copyClipboard, "swift_tui_android_copy_clipboard_text", SWIFT_TUI_ANDROID_OP_CLIPBOARD);
     OPTIONAL(diagnostics, "swift_tui_android_diag", SWIFT_TUI_ANDROID_OP_DIAGNOSTICS);
+    OPTIONAL(copyOpenLink, "swift_tui_android_copy_open_link", SWIFT_TUI_ANDROID_OP_OPEN_LINK);
 #undef OPTIONAL
     return {};
   }

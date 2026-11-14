@@ -16,12 +16,19 @@ int main(int argc, char** argv) {
   if (!library) { std::cerr << dlerror() << '\n'; return 1; }
   HostFunctions functions;
   const auto error = functions.load(library, countedResolve);
-  if (std::string(argv[2]) != "ok") {
+  if (std::string(argv[2]).rfind("ok", 0) != 0) {
     assert(error.find(argv[2]) == 0);
     std::cout << error << '\n';
   } else {
     assert(error.empty());
     assert(!functions.capabilities && !functions.resync && !functions.accessibility);
+    // "ok" admits the library without the optional operation; "ok+open-link"
+    // also requires the loader to have resolved it.
+    if (std::string(argv[2]) == "ok+open-link") {
+      assert(functions.copyOpenLink && functions.copyOpenLink(INT64_C(0x100000002), nullptr, 0) == 7);
+    } else {
+      assert(!functions.copyOpenLink);
+    }
     const int resolved = lookups;
     functions.install();
     const auto handle = functions.create();
