@@ -206,8 +206,9 @@ data class SwiftTUIFrame(
 ) {
   // A decoded frame is retained unchanged while Compose paints it. Index once
   // so partial paints do not rescan the entire surface for each damaged row.
+  // Cells the decoder published row by row already are that index.
   internal val cellsByRow: Map<Int, List<SwiftTUICell>> by lazy {
-    cells.groupBy { it.y }
+    (cells as? SwiftTUIRowCells)?.byRow() ?: cells.groupBy { it.y }
   }
 
   /**

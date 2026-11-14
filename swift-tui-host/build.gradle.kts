@@ -69,6 +69,13 @@ android {
   testOptions {
     unitTests {
       isIncludeAndroidResources = false
+      // -PswiftTUIRowDecoding=rebuild runs the JVM suite on the decoder
+      // session's earlier row-decoding path instead of the default one.
+      all { test ->
+        providers.gradleProperty("swiftTUIRowDecoding").orNull?.let {
+          test.systemProperty("sh.swifttui.android.host.rowDecoding", it)
+        }
+      }
     }
   }
 }

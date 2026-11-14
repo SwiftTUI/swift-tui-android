@@ -522,7 +522,10 @@ cd swift-tui-counter-demo/AndroidExample
 
 MIT; see [LICENSE](LICENSE).
 
-The renderer indexes decoded frame cells by row for partial painting. Detailed
+The decoder session keeps the decoded cells of each wire row and reuses every
+row a delta does not replace, restyle or relink. A frame's `cells` list is a
+read-only view over those rows, and the renderer's row index for partial
+painting is the same rows; a published frame never changes. Detailed
 column damage takes precedence over the decoder's dirty-row summary; a row
 with no column details repaints at full width. Image-bearing frames retain the
 conservative full repaint behavior. Surface grid dimensions must be nonnegative

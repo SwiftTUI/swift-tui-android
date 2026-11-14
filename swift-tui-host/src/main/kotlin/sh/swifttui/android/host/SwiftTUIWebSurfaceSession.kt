@@ -25,7 +25,11 @@ import org.json.JSONTokener
  * rows over a same-size baseline and are dropped when no usable baseline
  * exists.
  */
-class SwiftTUIWebSurfaceSession {
+class SwiftTUIWebSurfaceSession internal constructor(
+  internal val rowDecoding: SwiftTUIRowDecoding
+) {
+  constructor() : this(SwiftTUIRowDecoding.current())
+
   private data class CellTuple(
     val x: Int,
     val text: String,
@@ -33,7 +37,69 @@ class SwiftTUIWebSurfaceSession {
     val styleIndex: Int
   )
 
+  /**
+   * One row's decoded cells, kept with what they were decoded from: the wire
+   * row (by identity — a delta replaces a row's list, it never edits one), the
+   * link runs applied to it, and the highest style slot it reads.
+   */
+  private class RetainedRow(
+    val tuples: List<CellTuple>,
+    val cells: SwiftTUIDecodedRow,
+    val links: RowLinks?,
+    val maxStyleIndex: Int
+  )
+
+  /** The link runs of one row in wire order, with their targets resolved. */
+  private class RowLinks(capacity: Int) {
+    private var starts = IntArray(capacity)
+    private var spans = IntArray(capacity)
+    private var targets = arrayOfNulls<String>(capacity)
+    var count = 0
+      private set
+
+    fun add(start: Int, span: Int, target: String) {
+      if (count == starts.size) {
+        val grown = maxOf(4, count * 2)
+        starts = starts.copyOf(grown)
+        spans = spans.copyOf(grown)
+        targets = targets.copyOf(grown)
+      }
+      starts[count] = start
+      spans[count] = span
+      targets[count] = target
+      count += 1
+    }
+
+    /** The target of the last run covering column [x]: a later run overrides an earlier one. */
+    fun targetAt(x: Int): String? {
+      for (index in count - 1 downTo 0) {
+        val start = starts[index]
+        if (x >= start && x < start + spans[index]) return targets[index]
+      }
+      return null
+    }
+
+    fun sameRuns(other: RowLinks): Boolean {
+      if (count != other.count) return false
+      for (index in 0 until count) {
+        if (starts[index] != other.starts[index] || spans[index] != other.spans[index] ||
+          targets[index] != other.targets[index]) return false
+      }
+      return true
+    }
+  }
+
+  private class DecodedCells(val cells: List<SwiftTUICell>, val retained: Array<RetainedRow>?)
+
   private var baselineRows: List<List<CellTuple>>? = null
+  /**
+   * The decoded rows of the active baseline, parallel to [baselineRows], and
+   * the style table they were resolved against. Held only on the retained
+   * path, and only for the one baseline: a row a delta replaces is dropped
+   * here and lives on only in frames that were published with it.
+   */
+  private var retainedRows: Array<RetainedRow>? = null
+  private var retainedStyles: List<SwiftTUITextStyle?> = emptyList()
   /**
    * The retained style table. Held across records because a delta may carry
    * only the styles it added, keyed by `stylesBase` — the negotiated
@@ -52,6 +118,8 @@ class SwiftTUIWebSurfaceSession {
 
   fun reset() {
     baselineRows = null
+    retainedRows = null
+    retainedStyles = emptyList()
     baselineStyles = emptyList()
     baselineWidth = 0
     baselineHeight = 0
@@ -64,6 +132,9 @@ class SwiftTUIWebSurfaceSession {
   internal fun requestKeyframeRecovery() {
     pendingResyncScope = KEYFRAME_RESYNC_SCOPE
   }
+
+  /** The decoded rows this session retains, or `null` when it retains none. */
+  internal fun retainedRowCells(): List<List<SwiftTUICell>>? = retainedRows?.map { it.cells }
 
   /**
    * Decodes one web-surface record into a frame, or `null` when the record
@@ -120,9 +191,11 @@ class SwiftTUIWebSurfaceSession {
     val stamp = record.fullFrameStamp()
     val rows = parseRowTuples(record.optJSONArray("rows"))
     val styles = parseStyleTable(record.optJSONArray("styles"))
-    val frame = buildFrame(record, rows, styles)
+    val decoded = decodeCells(record, rows, styles)
+    val frame = buildFrame(record, decoded.cells)
     baselineRows = rows
     baselineStyles = styles
+    retain(decoded, styles)
     baselineWidth = width
     baselineHeight = height
     lastEpoch = stamp.epoch
@@ -184,9 +257,11 @@ class SwiftTUIWebSurfaceSession {
       }
       rows[row] = parseCellTuples(row, entry.optJSONArray(1))
     }
-    val frame = buildFrame(record, rows, styles)
+    val decoded = decodeCells(record, rows, styles)
+    val frame = buildFrame(record, decoded.cells)
     baselineRows = rows
     baselineStyles = styles
+    retain(decoded, styles)
     lastEpoch = stamp.epoch
     lastGeneration = stamp.generation
     return frame
@@ -221,11 +296,142 @@ class SwiftTUIWebSurfaceSession {
     }
   }
 
-  private fun buildFrame(
+  /** Commits the decoded rows with the baseline they belong to. */
+  private fun retain(decoded: DecodedCells, styles: List<SwiftTUITextStyle?>) {
+    if (decoded.retained != null) {
+      retainedRows = decoded.retained
+      retainedStyles = styles
+    }
+  }
+
+  private fun decodeCells(
     record: JSONObject,
     rowTuples: List<List<CellTuple>>,
     styles: List<SwiftTUITextStyle?>
-  ): SwiftTUIFrame {
+  ): DecodedCells = when (rowDecoding) {
+    SwiftTUIRowDecoding.Rebuild -> DecodedCells(rebuildCells(record, rowTuples, styles), retained = null)
+    SwiftTUIRowDecoding.RetainedRows -> retainCells(record, rowTuples, styles)
+  }
+
+  /**
+   * Decodes only the rows whose cells could differ from the retained ones: a
+   * row the record replaced, a row whose link runs changed, and a row that
+   * reads a style slot the new table no longer resolves to an equal style.
+   * Reads session state but does not change it; [retain] commits the result
+   * once the frame is built.
+   */
+  private fun retainCells(
+    record: JSONObject,
+    rowTuples: List<List<CellTuple>>,
+    styles: List<SwiftTUITextStyle?>
+  ): DecodedCells {
+    val links = parseRowLinks(
+      record.optJSONArray("links"), record.optJSONArray("linkTargets").strings(), rowTuples.size)
+    val previous = retainedRows
+    val stableStyles = if (previous == null) 0 else stableStylePrefix(retainedStyles, styles)
+    val rows = Array(rowTuples.size) { y ->
+      val tuples = rowTuples[y]
+      val rowLinks = links?.get(y)
+      val candidate = if (previous != null && y < previous.size) previous[y] else null
+      if (candidate != null && candidate.tuples === tuples &&
+        candidate.maxStyleIndex < stableStyles && sameLinks(candidate.links, rowLinks)) {
+        candidate
+      } else {
+        decodeRow(y, tuples, styles, rowLinks)
+      }
+    }
+    // The frame gets its own array of rows; the rows themselves are shared and never mutated.
+    return DecodedCells(SwiftTUIRowCells(Array(rows.size) { rows[it].cells }), rows)
+  }
+
+  private fun decodeRow(
+    y: Int,
+    tuples: List<CellTuple>,
+    styles: List<SwiftTUITextStyle?>,
+    links: RowLinks?
+  ): RetainedRow {
+    var maxStyleIndex = -1
+    val cells = Array(tuples.size) { index ->
+      val tuple = tuples[index]
+      if (tuple.styleIndex > maxStyleIndex) maxStyleIndex = tuple.styleIndex
+      SwiftTUICell(
+        x = tuple.x,
+        y = y,
+        character = tuple.text,
+        spanWidth = tuple.span,
+        continuationLeadX = null,
+        style = styles.getOrNull(tuple.styleIndex),
+        hyperlink = links?.targetAt(tuple.x)
+      )
+    }
+    return RetainedRow(tuples, SwiftTUIDecodedRow(cells), links, maxStyleIndex)
+  }
+
+  /**
+   * How many leading style slots resolve to an equal style in both tables. A
+   * row whose highest slot is below this resolves exactly as it did. Equal
+   * tables keep every row, including one that reads a slot past the end.
+   */
+  private fun stableStylePrefix(
+    retained: List<SwiftTUITextStyle?>,
+    next: List<SwiftTUITextStyle?>
+  ): Int {
+    val common = minOf(retained.size, next.size)
+    var index = 0
+    while (index < common) {
+      val before = retained[index]
+      val after = next[index]
+      if (before !== after && before != after) break
+      index += 1
+    }
+    return if (index == retained.size && index == next.size) Int.MAX_VALUE else index
+  }
+
+  private fun sameLinks(retained: RowLinks?, next: RowLinks?): Boolean =
+    if (retained == null || next == null) retained === next else retained.sameRuns(next)
+
+  /**
+   * The record's link runs by row, or `null` when it links nothing. Mirrors
+   * [applyLinkRuns]: a run whose target does not resolve is skipped, and a
+   * later run overrides an earlier one on the columns they share.
+   */
+  private fun parseRowLinks(
+    linkRuns: JSONArray?,
+    linkTargets: List<String>,
+    rowCount: Int
+  ): Array<RowLinks?>? {
+    val runs = linkRuns ?: return null
+    if (runs.length() == 0 || linkTargets.isEmpty()) {
+      return null
+    }
+    var byRow: Array<RowLinks?>? = null
+    for (index in 0 until runs.length()) {
+      val entry = runs.optJSONArray(index) ?: continue
+      val y = entry.optInt(0, -1)
+      val rowRuns = entry.optJSONArray(1) ?: continue
+      // A row without retained cells has no cell to link.
+      if (y < 0 || y >= rowCount) continue
+      for (runIndex in 0 until rowRuns.length()) {
+        val run = rowRuns.optJSONArray(runIndex) ?: continue
+        val start = run.optInt(0)
+        val span = run.optInt(1)
+        val target = linkTargets.getOrNull(run.optInt(2, -1)) ?: continue
+        // An empty or overflowing run covers no column.
+        if (start + span <= start) continue
+        val rows = byRow ?: arrayOfNulls<RowLinks>(rowCount).also { byRow = it }
+        val row = rows[y] ?: RowLinks(rowRuns.length()).also { rows[y] = it }
+        row.add(start, span, target)
+      }
+    }
+    return byRow
+  }
+
+  /** The [SwiftTUIRowDecoding.Rebuild] path: every cell and every link, every frame. */
+  private fun rebuildCells(
+    record: JSONObject,
+    rowTuples: List<List<CellTuple>>,
+    styles: List<SwiftTUITextStyle?>
+  ): List<SwiftTUICell> {
     val linkTargets = record.optJSONArray("linkTargets").strings()
     val linkRuns = record.optJSONArray("links")
 
@@ -246,8 +452,10 @@ class SwiftTUIWebSurfaceSession {
         }
       }
     }
-    val linkedCells = applyLinkRuns(cells, linkRuns, linkTargets)
+    return applyLinkRuns(cells, linkRuns, linkTargets)
+  }
 
+  private fun buildFrame(record: JSONObject, cells: List<SwiftTUICell>): SwiftTUIFrame {
     val damage = record.optJSONObject("damage")
     val textDamageRows = parseDamageTextRows(damage?.optJSONArray("textRows"))
     val focusPresentation = record.optJSONObject("focusPresentation")
@@ -266,7 +474,7 @@ class SwiftTUIWebSurfaceSession {
       preferredGridHeight = record.optionalIntWeb("preferredGridHeight"),
       terminalStyle = record.optJSONObject("terminalStyle")?.toWebTerminalStyle()
         ?: SwiftTUITerminalStyle.Default,
-      cells = linkedCells,
+      cells = cells,
       imageAttachments = record.optJSONArray("images").objects().map { it.toWebImageAttachment() },
       focusedIdentity = focusPresentation.focusedIdentity,
       focusPresentation = focusPresentation,

@@ -26,6 +26,15 @@ a fake Swift toolchain: a `swiftly` script, an SDK bundle and an NDK whose
 rejection, per-ABI staging, incremental behaviour, the skip when tooling is
 absent, and configuration-cache reuse, without Swift or the NDK.
 
+The decoder session reuses decoded rows across deltas. The earlier path, which
+decodes every cell for every frame, stays selectable as the reference that
+`SwiftTUIDecodedRowEquivalenceTest` compares against. Run the whole JVM suite on
+it with `-PswiftTUIRowDecoding=rebuild`, or select it in any process with the
+system property `sh.swifttui.android.host.rowDecoding=rebuild`.
+`DecodedRowWorkloads` generates the fixed record streams used to measure this
+path and `DecodedRowBenchmark` is their manual driver, for a desktop JVM or for
+`app_process` on a device.
+
 Those targets cover the Kotlin half only: this repository never cross-compiles
 Swift, so a green `native_gate.sh` says nothing about the Swift toolchain.
 Exercise the full path — Swift cross-compile, `jniLibs` staging, APK packaging,
