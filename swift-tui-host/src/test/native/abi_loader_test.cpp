@@ -11,7 +11,10 @@ static void* countedResolve(void* library, const char* name) {
 }
 
 int main(int argc, char** argv) {
-  assert(argc == 3);
+  // argv: library, expected load result ("ok+open-link" also expects open link
+  // to resolve), and whether take clipboard resolves.
+  assert(argc == 4);
+  const bool expectsTake = std::string(argv[3]) == "take";
   void* library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
   if (!library) { std::cerr << dlerror() << '\n'; return 1; }
   HostFunctions functions;
@@ -29,6 +32,11 @@ int main(int argc, char** argv) {
     } else {
       assert(!functions.copyOpenLink);
     }
+    // Take clipboard follows the same rule as the other optional operations: the
+    // advertised bit decides, not the symbol; a legacy library has no bits, so
+    // there the symbol decides.
+    assert((functions.takeClipboard != nullptr) == expectsTake);
+    if (functions.takeClipboard) assert(functions.takeClipboard(INT64_C(0x100000002), nullptr, 0) == -1);
     const int resolved = lookups;
     functions.install();
     const auto handle = functions.create();

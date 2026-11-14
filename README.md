@@ -435,6 +435,38 @@ handling.
 Selecting several documents, share-sheet (`ACTION_SEND`) intake and platform
 drag-and-drop are not part of this route.
 
+## Clipboard
+
+**Copy.** On every frame poll the host asks the runtime for the app's latest
+clipboard write and forwards it to `ClipboardManager`, once per write, as the
+exact UTF-8 text. A write that a destroyed host still held is never delivered.
+An app clears the clipboard by writing an empty string, and the host then
+removes the primary clip. That needs a `swift-tui` host library with the take
+operation of
+[native ABI 1 minor 1](https://github.com/SwiftTUI/swift-tui/blob/main/Contracts/1/profiles/android-abi.md).
+An older library refuses an empty write, so the app's clipboard action returns
+`false` and the clipboard keeps its content.
+
+**Paste.** Ctrl+V and Shift+Insert read the system clipboard and send its text
+to the runtime as one bracketed paste. Control bytes other than tab and newline
+are removed first, so pasted text cannot carry an escape sequence or the
+paste-end marker. Paste is text only: the text of the primary clip's first
+item, which for an HTML clip is its plain-text alternative. An absent clip, an
+empty text, and a clip whose first item has no text (a URI or an Intent) paste
+nothing. The host never resolves a content URI or an Intent into text.
+
+**Hardware chords.** Ctrl with a letter reaches the runtime as the control byte
+a terminal sends (Ctrl+A is `0x01`), so Ctrl+A, Ctrl+C and Ctrl+X select, copy
+and cut in a focused text control. The host claims these chords and the paste
+shortcuts before the invisible text field that receives soft-keyboard input
+can act on them. Ctrl+C with nothing to copy reaches the runtime's exit key
+binding, which a hosted session refuses: the session keeps running and the
+runtime logs `lifecycle.userExitUnsupported`.
+
+The host has no native selection handles or menus. Text that a soft keyboard
+commits, including text from a keyboard's own clipboard strip, arrives as typed
+input: it is not a bracketed paste and is not filtered.
+
 ## Requirements
 
 - Install the Android SDK Platform **37.1** and NDK `30.0.16248370`: it strips

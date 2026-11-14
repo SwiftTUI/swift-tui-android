@@ -68,6 +68,18 @@ class SwiftTUIInputTest {
   }
 
   @Test
+  fun controlByteMapsLettersInEitherCaseAndNothingElse() {
+    assertArrayEquals(byteArrayOf(0x01), SwiftTUIInput.controlByte('a'))
+    assertArrayEquals(byteArrayOf(0x03), SwiftTUIInput.controlByte('c'))
+    assertArrayEquals(byteArrayOf(0x03), SwiftTUIInput.controlByte('C'))
+    assertArrayEquals(byteArrayOf(0x18), SwiftTUIInput.controlByte('x'))
+    assertArrayEquals(byteArrayOf(0x1A), SwiftTUIInput.controlByte('Z'))
+    for (other in listOf('1', '[', ' ', 'é', '\u0000')) {
+      assertEquals(null, SwiftTUIInput.controlByte(other))
+    }
+  }
+
+  @Test
   fun bracketedPasteWrapsAndStripsControlBytes() {
     assertEquals(
       "$ESC[200~hello$ESC[201~",

@@ -101,6 +101,18 @@ object SwiftTUIInput {
   }
 
   /**
+   * The control byte a terminal sends for Ctrl+[letter]: Ctrl+A is 0x01 and
+   * Ctrl+Z is 0x1A, in either case. `null` for anything but an ASCII letter.
+   */
+  fun controlByte(letter: Char): ByteArray? {
+    val lower = letter.lowercaseChar()
+    if (lower !in 'a'..'z') {
+      return null
+    }
+    return byteArrayOf((lower.code - 'a'.code + 1).toByte())
+  }
+
+  /**
    * Wraps `text` in a bracketed-paste sequence. Control bytes (other than tab
    * and newline) are stripped so pasted content cannot smuggle the paste-end
    * marker or other escape sequences into the input stream.

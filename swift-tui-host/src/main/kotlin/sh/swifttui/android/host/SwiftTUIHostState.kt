@@ -57,6 +57,13 @@ class SwiftTUIHostState internal constructor(
     copyLatestFrame = SwiftTUIJni::copyLatestFrame,
     requestResync = SwiftTUIJni::requestResync
   )
+  private val clipboardDrain = clipboard?.let {
+    SwiftTUIClipboardDrain(
+      clipboard = it,
+      takeClipboardText = SwiftTUIJni::takeClipboardText,
+      copyClipboardText = SwiftTUIJni::copyClipboardText
+    )
+  }
 
   fun start() {
     if (handle == 0L) {
@@ -82,6 +89,9 @@ class SwiftTUIHostState internal constructor(
     frame = null
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
+    // Before the scene starts, so an empty clipboard write made while it
+    // starts is admitted rather than refused.
+    clipboardDrain?.declare(handle)
     // Before the scene starts, so the runtime never sees a link activation
     // without its dispatcher registered.
     linkRouter?.attach(handle)
@@ -177,7 +187,10 @@ class SwiftTUIHostState internal constructor(
     linkRouter?.tapped(uri)
   }
 
-  /** Reads the system clipboard and delivers it to the app as a bracketed paste. */
+  /**
+   * Reads the system clipboard and delivers its text to the app as a bracketed
+   * paste. A clipboard with no text sends nothing; see [SwiftTUIClipboard.read].
+   */
   fun paste() {
     val text = clipboard?.read() ?: return
     sendInput(SwiftTUIInput.bracketedPaste(text))
@@ -281,24 +294,13 @@ class SwiftTUIHostState internal constructor(
     }
   }
 
-  /** Forwards any app-requested copy to the system clipboard, draining it once. */
+  /**
+   * Forwards any app-requested copy to the system clipboard, draining it once.
+   * After [destroy] the handle is 0, so a write the destroyed host still held
+   * is never delivered.
+   */
   private fun drainClipboardWrite() {
-    val currentHandle = handle
-    val clipboard = clipboard ?: return
-    if (currentHandle == 0L) {
-      return
-    }
-
-    val needed = SwiftTUIJni.copyClipboardText(currentHandle, null, 0)
-    if (needed <= 0) {
-      return
-    }
-
-    val bytes = ByteArray(needed)
-    val copied = SwiftTUIJni.copyClipboardText(currentHandle, bytes, bytes.size)
-    if (copied in 1..bytes.size) {
-      clipboard.write(bytes.decodeToString(0, copied))
-    }
+    clipboardDrain?.drain(handle)
   }
 
   /** Dispatches the links the runtime asked this host to open, each once. */

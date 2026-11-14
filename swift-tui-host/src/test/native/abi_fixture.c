@@ -10,13 +10,16 @@
 #ifndef INFO_BYTES
 #define INFO_BYTES 32
 #endif
+#ifndef ABI_MINOR
+#define ABI_MINOR SWIFT_TUI_ANDROID_ABI_MINOR
+#endif
 #ifndef OPERATIONS
 #define OPERATIONS 0
 #endif
 
 #ifndef LEGACY
 int32_t swift_tui_android_get_abi_info(uint8_t *out, int32_t capacity) {
-  const swift_tui_android_abi_info info = {INFO_BYTES, ABI_MAJOR, 0, 64, COUNT_BITS, 64, OPERATIONS, 0};
+  const swift_tui_android_abi_info info = {INFO_BYTES, ABI_MAJOR, ABI_MINOR, 64, COUNT_BITS, 64, OPERATIONS, 0};
   if (out && capacity > 0) {
     int32_t count = capacity < INFO_BYTES ? capacity : INFO_BYTES;
     memcpy(out, &info, (size_t)count);
@@ -44,6 +47,11 @@ void swift_tui_android_send_input(int64_t h, const uint8_t *b, int32_t c) {
 int32_t swift_tui_android_copy_latest_frame(int64_t h, uint8_t *b, int32_t c) {
   (void)h; (void)b; (void)c; return 0;
 }
+#ifdef WITH_TAKE
+int32_t swift_tui_android_take_clipboard_text(int64_t h, uint8_t *b, int32_t c) {
+  (void)h; (void)b; (void)c; return -1;
+}
+#endif
 #ifdef WITH_OPEN_LINK
 int32_t swift_tui_android_copy_open_link(int64_t h, uint8_t *b, int32_t c) {
   (void)h; (void)b; (void)c; return 7;

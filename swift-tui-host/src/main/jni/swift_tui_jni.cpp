@@ -196,6 +196,50 @@ jint nativeCopyClipboardText(
   return needed;
 }
 
+// The take operation's own results are -1 (nothing pending) and a byte count
+// of 0 or more. A host library without the operation (ABI 1.0, or the legacy
+// symbol contract) reports this instead, so Kotlin falls back to the copy
+// operation. Keep in sync with SwiftTUIClipboardDrain.TAKE_UNSUPPORTED.
+constexpr jint kTakeClipboardUnsupported = -2;
+
+jint nativeTakeClipboardText(
+  JNIEnv* env,
+  jobject,
+  jlong handle,
+  jbyteArray outBuffer,
+  jint capacity
+) {
+  auto takeClipboardText = gHost.takeClipboard;
+  if (takeClipboardText == nullptr) {
+    return kTakeClipboardUnsupported;
+  }
+
+  if (outBuffer == nullptr) {
+    return takeClipboardText(static_cast<int64_t>(handle), nullptr, 0);
+  }
+
+  // Unlike the copy operation, a zero capacity with a real buffer is a copy:
+  // it is how an empty pending write is drained.
+  jsize arrayLength = env->GetArrayLength(outBuffer);
+  jint boundedCapacity = capacity < arrayLength ? capacity : arrayLength;
+  if (boundedCapacity < 0) {
+    boundedCapacity = 0;
+  }
+  jbyte* bytes = env->GetByteArrayElements(outBuffer, nullptr);
+  if (bytes == nullptr) {
+    // Nothing was taken; the write stays pending for the next poll.
+    return -1;
+  }
+
+  jint needed = takeClipboardText(
+    static_cast<int64_t>(handle),
+    reinterpret_cast<uint8_t*>(bytes),
+    static_cast<int32_t>(boundedCapacity)
+  );
+  env->ReleaseByteArrayElements(outBuffer, bytes, 0);
+  return needed;
+}
+
 jint nativeCopyOpenLink(
   JNIEnv* env,
   jobject,
@@ -356,6 +400,7 @@ const JNINativeMethod kMethods[] = {
   {"resize", "(JIIDD)V", reinterpret_cast<void*>(nativeResize)},
   {"copyLatestFrame", "(J[BI)I", reinterpret_cast<void*>(nativeCopyLatestFrame)},
   {"copyClipboardText", "(J[BI)I", reinterpret_cast<void*>(nativeCopyClipboardText)},
+  {"takeClipboardText", "(J[BI)I", reinterpret_cast<void*>(nativeTakeClipboardText)},
   {"copyOpenLink", "(J[BI)I", reinterpret_cast<void*>(nativeCopyOpenLink)},
   {"sendInput", "(J[BI)V", reinterpret_cast<void*>(nativeSendInput)},
   {"declareCapabilities", "(J[BI)I", reinterpret_cast<void*>(nativeDeclareCapabilities)},

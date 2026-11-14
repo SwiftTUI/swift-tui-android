@@ -1,5 +1,6 @@
 package sh.swifttui.android.host
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -28,6 +29,7 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -204,23 +206,33 @@ fun SwiftTUIHostView(
           }
         }
       }
+      // The paste shortcuts and Ctrl+<letter> chords are claimed on the way
+      // down, before the focused child sees them. While a text control has
+      // focus that child is the invisible IME sink, a real text field that
+      // would act on them itself: paste the clipboard into its own buffer,
+      // which reaches the runtime as unfiltered keystrokes instead of a
+      // bracketed paste, and select, copy, or cut that buffer, a record of
+      // what was typed, instead of the focused control's text.
+      .onPreviewKeyEvent { event ->
+        if (event.isPasteShortcut()) {
+          if (event.type == KeyEventType.KeyDown) {
+            state.paste()
+          }
+          return@onPreviewKeyEvent true
+        }
+        val bytes = event.controlChordBytes() ?: return@onPreviewKeyEvent false
+        if (event.type == KeyEventType.KeyDown) {
+          state.sendInput(bytes)
+        }
+        true
+      }
       .onKeyEvent { event ->
-        when {
-          event.isPasteShortcut() -> {
-            if (event.type == KeyEventType.KeyDown) {
-              state.paste()
-            }
-            true
-          }
-          else -> {
-            val bytes = event.toSwiftTUIInputBytes()
-            if (bytes == null) {
-              false
-            } else {
-              state.sendInput(bytes)
-              true
-            }
-          }
+        val bytes = event.toSwiftTUIInputBytes()
+        if (bytes == null) {
+          false
+        } else {
+          state.sendInput(bytes)
+          true
         }
       }
       .onSizeChanged { size ->
@@ -315,6 +327,20 @@ private fun normalizedImeValue(value: TextFieldValue): TextFieldValue {
 private fun ComposeKeyEvent.isPasteShortcut(): Boolean =
   (isCtrlPressed && key == Key.V) || (isShiftPressed && key == Key.Insert)
 
+// Ctrl+<letter> -> ASCII control byte (Ctrl-A == 0x01), matching terminals. The
+// letter comes from the key code: with Ctrl held, Android's key character maps
+// produce no character, so `unicodeChar` is 0 for exactly these chords.
+private fun ComposeKeyEvent.controlChordBytes(): ByteArray? {
+  if (!isCtrlPressed || isAltPressed) {
+    return null
+  }
+  val keyCode = nativeKeyEvent.keyCode
+  if (keyCode !in AndroidKeyEvent.KEYCODE_A..AndroidKeyEvent.KEYCODE_Z) {
+    return null
+  }
+  return SwiftTUIInput.controlByte('a' + (keyCode - AndroidKeyEvent.KEYCODE_A))
+}
+
 private fun ComposeKeyEvent.toSwiftTUIInputBytes(): ByteArray? {
   if (type != KeyEventType.KeyDown) {
     return null
@@ -341,17 +367,11 @@ private fun ComposeKeyEvent.toSwiftTUIInputBytes(): ByteArray? {
     return escapeSequence.encodeToByteArray()
   }
 
+  // Ctrl+<letter> chords never get here: `controlChordBytes` claims them in
+  // the preview pass.
   val unicodeChar = nativeKeyEvent.unicodeChar
   if (unicodeChar == 0) {
     return null
-  }
-
-  // Ctrl+<letter> -> ASCII control byte (Ctrl-A == 0x01), matching terminals.
-  if (isCtrlPressed && !isAltPressed) {
-    val lower = unicodeChar.toChar().lowercaseChar()
-    if (lower in 'a'..'z') {
-      return byteArrayOf((lower.code - 'a'.code + 1).toByte())
-    }
   }
 
   val text = String(Character.toChars(unicodeChar))

@@ -18,6 +18,7 @@ struct HostFunctions {
   decltype(&swift_tui_android_send_input) sendInput = nullptr;
   decltype(&swift_tui_android_copy_latest_frame) copyFrame = nullptr;
   decltype(&swift_tui_android_copy_clipboard_text) copyClipboard = nullptr;
+  decltype(&swift_tui_android_take_clipboard_text) takeClipboard = nullptr;
   decltype(&swift_tui_android_declare_capabilities) capabilities = nullptr;
   decltype(&swift_tui_android_request_resync) resync = nullptr;
   decltype(&swift_tui_android_accessibility_action) accessibility = nullptr;
@@ -66,6 +67,7 @@ struct HostFunctions {
     OPTIONAL(resync, "swift_tui_android_request_resync", SWIFT_TUI_ANDROID_OP_RESYNC);
     OPTIONAL(accessibility, "swift_tui_android_accessibility_action", SWIFT_TUI_ANDROID_OP_ACCESSIBILITY);
     OPTIONAL(copyClipboard, "swift_tui_android_copy_clipboard_text", SWIFT_TUI_ANDROID_OP_CLIPBOARD);
+    OPTIONAL(takeClipboard, "swift_tui_android_take_clipboard_text", SWIFT_TUI_ANDROID_OP_CLIPBOARD_TAKE);
     OPTIONAL(diagnostics, "swift_tui_android_diag", SWIFT_TUI_ANDROID_OP_DIAGNOSTICS);
     OPTIONAL(copyOpenLink, "swift_tui_android_copy_open_link", SWIFT_TUI_ANDROID_OP_OPEN_LINK);
 #undef OPTIONAL
