@@ -391,6 +391,45 @@ jint nativeAccessibilityAction(
   return accepted;
 }
 
+jboolean nativeSupportsTextInput(JNIEnv*, jobject) {
+  // The loader keeps the member only when the library advertises the
+  // operation and exports its symbol, so this is the whole negotiation.
+  return gHost.textInput != nullptr ? JNI_TRUE : JNI_FALSE;
+}
+
+jint nativeTextInput(
+  JNIEnv* env,
+  jobject,
+  jlong handle,
+  jbyteArray record,
+  jint count
+) {
+  // Older runtime libraries return unsupported; the host then keeps sending
+  // committed-text bytes instead of an edit they cannot interpret.
+  auto textInput = gHost.textInput;
+  if (textInput == nullptr) {
+    return -1;
+  }
+  if (record == nullptr || count <= 0) {
+    return 0;
+  }
+
+  jsize arrayLength = env->GetArrayLength(record);
+  jint boundedCount = count < arrayLength ? count : arrayLength;
+  jbyte* bytes = env->GetByteArrayElements(record, nullptr);
+  if (bytes == nullptr) {
+    return 0;
+  }
+
+  jint accepted = textInput(
+    static_cast<int64_t>(handle),
+    reinterpret_cast<const uint8_t*>(bytes),
+    static_cast<int32_t>(boundedCount)
+  );
+  env->ReleaseByteArrayElements(record, bytes, JNI_ABORT);
+  return accepted;
+}
+
 const JNINativeMethod kMethods[] = {
   {"createHost", "()J", reinterpret_cast<void*>(nativeCreateHost)},
   {"start", "(J)V", reinterpret_cast<void*>(nativeStart)},
@@ -406,6 +445,8 @@ const JNINativeMethod kMethods[] = {
   {"declareCapabilities", "(J[BI)I", reinterpret_cast<void*>(nativeDeclareCapabilities)},
   {"accessibilityAction", "(J[BI)I", reinterpret_cast<void*>(nativeAccessibilityAction)},
   {"requestResync", "(J[BI)I", reinterpret_cast<void*>(nativeRequestResync)},
+  {"supportsTextInput", "()Z", reinterpret_cast<void*>(nativeSupportsTextInput)},
+  {"textInput", "(J[BI)I", reinterpret_cast<void*>(nativeTextInput)},
 };
 
 }  // namespace

@@ -473,9 +473,18 @@ private fun JSONObject.toWebAccessibilityNode(): SwiftTUIAccessibilityNode =
     value = if (optString("role") == "secureField") null else optJSONObject("value")?.toAccessibilityValue(),
     valueMin = (opt("valueMin") as? Number)?.toDouble()?.takeIf { it.isFinite() },
     valueMax = (opt("valueMax") as? Number)?.toDouble()?.takeIf { it.isFinite() },
-    valueStep = (opt("valueStep") as? Number)?.toDouble()?.takeIf { it.isFinite() }
-
+    valueStep = (opt("valueStep") as? Number)?.toDouble()?.takeIf { it.isFinite() },
+    textSelection = if (optString("role") == "secureField") null else optJSONArray("textSelection")?.toWebTextSelection()
   )
+
+/** `[anchor, head]`: exactly two nonnegative integers, or no selection at all. */
+private fun JSONArray.toWebTextSelection(): SwiftTUITextSelection? {
+  if (length() != HostContract.TEXT_RANGE_ARITY) return null
+  val anchor = (opt(0) as? Int) ?: return null
+  val head = (opt(1) as? Int) ?: return null
+  if (anchor < 0 || head < 0) return null
+  return SwiftTUITextSelection(anchor = anchor, head = head)
+}
 
 private fun JSONObject.toWebScrollRegion(): SwiftTUIScrollRegion =
   SwiftTUIScrollRegion(

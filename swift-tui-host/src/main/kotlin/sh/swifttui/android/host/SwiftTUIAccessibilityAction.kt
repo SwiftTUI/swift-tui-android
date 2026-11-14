@@ -40,7 +40,11 @@ data class SwiftTUIAccessibilityActionRequest(
   }
 }
 
-private fun escape(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+private fun escape(value: String): String = percentEncode(value)
+
+/** URI-component escaping of UTF-8 bytes; colons, LF and RS cannot split a record. */
+internal fun percentEncode(value: String): String =
+  URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
 internal fun JSONObject.toAccessibilityValue(): SwiftTUIAccessibilityValue? = when (opt("type")) {
   "boolean" -> (opt("value") as? Boolean)?.let(SwiftTUIAccessibilityValue::BooleanValue)

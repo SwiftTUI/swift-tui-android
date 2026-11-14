@@ -129,6 +129,15 @@ data class SwiftTUIFocusPresentation(
   }
 }
 
+/**
+ * A text control's directed selection in UTF-16 code units of its text value:
+ * [anchor] is the fixed end and [head] the moving end; equal for a caret.
+ */
+data class SwiftTUITextSelection(
+  val anchor: Int,
+  val head: Int
+)
+
 data class SwiftTUIAccessibilityNode(
   val id: String,
   val parentID: String?,
@@ -146,7 +155,9 @@ data class SwiftTUIAccessibilityNode(
   val value: SwiftTUIAccessibilityValue? = null,
   val valueMin: Double? = null,
   val valueMax: Double? = null,
-  val valueStep: Double? = null
+  val valueStep: Double? = null,
+  /** Published by nonsecure text controls; `null` for every other node. */
+  val textSelection: SwiftTUITextSelection? = null
 )
 
 data class SwiftTUIAccessibilityAnnouncement(

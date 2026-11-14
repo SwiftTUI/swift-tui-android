@@ -17,6 +17,16 @@ internal class SwiftTUIAccessibilityRequests(private val now: () -> Long = { Sys
     return id
   }
 
+  /**
+   * The next request ID from the same ordered counter, without an outstanding
+   * entry. Input-method edits use it: the session reads the frame's watermark
+   * itself, and their acknowledgements must not reach the accessibility UI.
+   */
+  fun allocate(): Long? {
+    if (nextID == Long.MAX_VALUE) return null
+    return ++nextID
+  }
+
   fun accept(response: SwiftTUIAccessibilityActionResponse?): SwiftTUIAccessibilityActionResponse? {
     prune()
     response ?: return null

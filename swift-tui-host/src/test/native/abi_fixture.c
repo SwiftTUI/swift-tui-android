@@ -57,3 +57,8 @@ int32_t swift_tui_android_copy_open_link(int64_t h, uint8_t *b, int32_t c) {
   (void)h; (void)b; (void)c; return 7;
 }
 #endif
+#ifdef WITH_TEXT_INPUT
+int32_t swift_tui_android_text_input(int64_t h, const uint8_t *b, int32_t c) {
+  (void)h; (void)b; return c;
+}
+#endif

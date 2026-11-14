@@ -39,7 +39,11 @@ shows the one-source-many-hosts claim rather than describing it.
 > `arm64-v8a` is the default ABI and the one qualified on a device. `x86_64` is
 > an opt-in second ABI (see [Supported ABIs](#supported-abis)): it is packaged
 > and its payload is checked, but it has not yet been run on an x86_64 device
-> or emulator. IME marked/pre-edit composition is outside the 0.9 claim. The
+> or emulator. With a Swift host library that carries the `textInput`
+> operation, the invisible editor mirrors the focused `TextField` or
+> `TextEditor` and sends each input-method edit whole: text, UTF-16 selection
+> and composing range. Secure fields and older host libraries keep
+> committed-text input, where pre-edit text is sent as typed. The
 > accessibility overlay uses a native virtual
 > hierarchy inside Compose. With a runtime advertising semantic actions, it
 > routes accessibility focus, activation, adjustment and text edits through JNI;

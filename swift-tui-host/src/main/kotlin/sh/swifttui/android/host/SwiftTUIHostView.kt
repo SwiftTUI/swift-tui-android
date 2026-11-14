@@ -86,9 +86,33 @@ fun SwiftTUIHostView(
   var imeValue by remember { mutableStateOf(TextFieldValue("")) }
 
   val prefersTextInput = frame?.focusPresentation?.prefersTextInput == true
+  // Whether the invisible editor mirrors the runtime's focused text control
+  // (see SwiftTUIImeSession). False is the committed-text byte path below.
+  val imeMirroring = state.imeMirroring
+
+  // Hardware keys, and key events an input method sends, as terminal bytes.
+  // The paste shortcuts and Ctrl+<letter> chords never get here: the preview
+  // pass below claims them.
+  val sendKey: (ComposeKeyEvent) -> Boolean = { event ->
+    val bytes = event.toSwiftTUIInputBytes()
+    if (bytes == null) {
+      false
+    } else {
+      state.sendInput(bytes)
+      true
+    }
+  }
 
   LaunchedEffect(Unit) {
     focusRequester.requestFocus()
+  }
+
+  // Leaving the mirror returns to the byte path's own buffer, which diffs
+  // from empty, as it does when a text control gains focus.
+  LaunchedEffect(imeMirroring) {
+    if (!imeMirroring) {
+      imeValue = TextFieldValue("")
+    }
   }
 
   // Show the soft keyboard whenever the focused view wants text input, and put
@@ -208,11 +232,19 @@ fun SwiftTUIHostView(
       }
       // The paste shortcuts and Ctrl+<letter> chords are claimed on the way
       // down, before the focused child sees them. While a text control has
-      // focus that child is the invisible IME sink, a real text field that
+      // focus that child is the invisible editor, a real text field that
       // would act on them itself: paste the clipboard into its own buffer,
-      // which reaches the runtime as unfiltered keystrokes instead of a
-      // bracketed paste, and select, copy, or cut that buffer, a record of
-      // what was typed, instead of the focused control's text.
+      // which reaches the runtime as unfiltered keystrokes, or as an
+      // input-method edit while it mirrors, instead of a bracketed paste, and
+      // select, copy, or cut that buffer instead of the focused control's
+      // text.
+      //
+      // While the editor mirrors a runtime control, every other key goes to
+      // the runtime before the editor sees it too: the runtime's own editing
+      // (caret movement over its layout, Tab traversal, Return, Backspace over
+      // text typed earlier) stays authoritative, and the mirror follows the
+      // frame. On the byte path the editor keeps handling those keys first,
+      // as before.
       .onPreviewKeyEvent { event ->
         if (event.isPasteShortcut()) {
           if (event.type == KeyEventType.KeyDown) {
@@ -220,21 +252,16 @@ fun SwiftTUIHostView(
           }
           return@onPreviewKeyEvent true
         }
-        val bytes = event.controlChordBytes() ?: return@onPreviewKeyEvent false
-        if (event.type == KeyEventType.KeyDown) {
-          state.sendInput(bytes)
+        val chord = event.controlChordBytes()
+        if (chord != null) {
+          if (event.type == KeyEventType.KeyDown) {
+            state.sendInput(chord)
+          }
+          return@onPreviewKeyEvent true
         }
-        true
+        state.imeMirroring && sendKey(event)
       }
-      .onKeyEvent { event ->
-        val bytes = event.toSwiftTUIInputBytes()
-        if (bytes == null) {
-          false
-        } else {
-          state.sendInput(bytes)
-          true
-        }
-      }
+      .onKeyEvent(sendKey)
       .onSizeChanged { size ->
         measuredSize = size
       },
@@ -251,22 +278,31 @@ fun SwiftTUIHostView(
         // Invisible IME sink: gives the soft keyboard a target and forwards
         // committed text as input bytes. Autocorrect/suggestions are disabled
         // so the terminal sees exactly what was typed.
+        //
+        // When the Swift host library accepts input-method edits, the editor
+        // instead mirrors the focused control's text and selection, and every
+        // edit, composing range included, is sent whole. The keyboard is then
+        // not forced to ASCII, so a composing input method keeps its layout.
         BasicTextField(
-          value = imeValue,
+          value = if (imeMirroring) state.imeBuffer.toTextFieldValue() else imeValue,
           onValueChange = { newValue ->
-            val bytes = SwiftTUIIme.bytesForEdit(imeValue.text, newValue.text)
-            if (bytes.isNotEmpty()) {
-              state.sendInput(bytes)
+            if (state.imeMirroring) {
+              state.imeEdit(newValue.toImeBuffer())
+            } else {
+              val bytes = SwiftTUIIme.bytesForEdit(imeValue.text, newValue.text)
+              if (bytes.isNotEmpty()) {
+                state.sendInput(bytes)
+              }
+              // Keep the buffer in the runtime's line breaks, so the next edit
+              // is diffed against the characters the runtime holds.
+              imeValue = normalizedImeValue(newValue)
             }
-            // Keep the buffer in the runtime's line breaks, so the next edit
-            // is diffed against the characters the runtime holds.
-            imeValue = normalizedImeValue(newValue)
           },
           enabled = prefersTextInput,
           keyboardOptions = KeyboardOptions(
             capitalization = KeyboardCapitalization.None,
             autoCorrectEnabled = false,
-            keyboardType = KeyboardType.Ascii,
+            keyboardType = if (imeMirroring) KeyboardType.Text else KeyboardType.Ascii,
             imeAction = ImeAction.Default
           ),
           modifier = Modifier
@@ -321,6 +357,22 @@ private fun normalizedImeValue(value: TextFieldValue): TextFieldValue {
   )
   return TextFieldValue(text, range(value.selection), value.composition?.let { range(it) })
 }
+
+private fun SwiftTUIImeBuffer.toTextFieldValue(): TextFieldValue =
+  TextFieldValue(
+    text = text,
+    selection = TextRange(selectionStart, selectionEnd),
+    composition = if (hasComposition) TextRange(compositionStart, compositionEnd) else null
+  )
+
+private fun TextFieldValue.toImeBuffer(): SwiftTUIImeBuffer =
+  SwiftTUIImeBuffer(
+    text = text,
+    selectionStart = selection.start,
+    selectionEnd = selection.end,
+    compositionStart = composition?.min ?: -1,
+    compositionEnd = composition?.max ?: -1
+  )
 
 // Ctrl+V or Shift+Insert pastes the system clipboard as a bracketed paste,
 // rather than sending the raw Ctrl-V control byte.

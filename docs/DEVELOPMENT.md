@@ -101,6 +101,29 @@ so change both together. The `ContentResolver` adapter
 (`SwiftTUIContentDocument`) has no JVM test: it only runs on a device, against
 a real provider.
 
+## Text input
+
+`SwiftTUIHostView` keeps an invisible `BasicTextField` as the soft keyboard's
+editor. `SwiftTUIImeSession` decides what it holds:
+
+- **Mirror.** When the loaded Swift host library advertises the `textInput`
+  operation and the frame describes the focused control (an enabled, nonsecure
+  `textField` or `textEditor` node with an action target, `editText`, a text
+  value and `textSelection`), the editor holds that control's text and
+  selection. Each input-method edit sends the whole buffer with its UTF-16
+  selection and composing range. A frame whose action-response watermark is
+  below the last edit's request ID is older than that edit and is not
+  mirrored; otherwise a frame whose text or selection differs from the editor
+  replaces it and ends the composition. Hardware keys, and key events a
+  keyboard sends, go to the runtime as terminal bytes before the editor sees
+  them. A line break typed into a single-line control is sent as Return.
+- **Byte path.** Otherwise (an older library, a secure field, a control the
+  frame does not describe) the editor is a scratch buffer diffed by
+  `SwiftTUIIme.bytesForEdit`, exactly as before the operation existed.
+
+Offsets are UTF-16 code units end to end. The host never counts characters:
+the runtime translates code units to its own grapheme offsets.
+
 ## Releases
 
 The Android host versions independently; the coordination root owns component

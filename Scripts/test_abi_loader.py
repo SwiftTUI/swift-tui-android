@@ -21,40 +21,50 @@ with tempfile.TemporaryDirectory(prefix="swifttui-abi-") as directory:
         str(TEST / "abi_loader_test.cpp"), "-o", runner,
         *(["-ldl"] if sys.platform != "darwin" else []))
     # Minor 1 operations: bit 5 is swift_tui_android_copy_open_link, bit 6 is
-    # swift_tui_android_take_clipboard_text.
+    # swift_tui_android_take_clipboard_text, bit 7 is swift_tui_android_text_input.
+    # The last element of a case names the ones the loader must resolve; it must
+    # leave every other one unresolved.
+    every = ["-DWITH_OPEN_LINK", "-DWITH_TAKE", "-DWITH_TEXT_INPUT"]
     cases = [
-        ("candidate", [], "ok", "no-take"),
-        ("legacy", ["-DLEGACY"], "ok", "no-take"),
-        ("missing-start", ["-DOMIT_START"], "android.abi.missingRequired: swift_tui_android_start", "no-take"),
-        ("missing-factory", ["-DOMIT_FACTORY"], "android.abi.missingRequired: swift_tui_android_create_host", "no-take"),
-        ("wrong-major", ["-DABI_MAJOR=2"], "android.abi.incompatibleMajor", "no-take"),
-        ("wrong-width", ["-DCOUNT_BITS=64"], "android.abi.argumentWidth", "no-take"),
-        ("short-info", ["-DINFO_BYTES=16"], "android.abi.shortInfo", "no-take"),
-        ("missing-advertised", ["-DOPERATIONS=1"], "android.abi.missingAdvertised", "no-take"),
+        ("candidate", [], "ok", ""),
+        ("legacy", ["-DLEGACY"], "ok", ""),
+        ("missing-start", ["-DOMIT_START"], "android.abi.missingRequired: swift_tui_android_start", ""),
+        ("missing-factory", ["-DOMIT_FACTORY"], "android.abi.missingRequired: swift_tui_android_create_host", ""),
+        ("wrong-major", ["-DABI_MAJOR=2"], "android.abi.incompatibleMajor", ""),
+        ("wrong-width", ["-DCOUNT_BITS=64"], "android.abi.argumentWidth", ""),
+        ("short-info", ["-DINFO_BYTES=16"], "android.abi.shortInfo", ""),
+        ("missing-advertised", ["-DOPERATIONS=1"], "android.abi.missingAdvertised", ""),
         # Open link (operation bit 5): resolved only when advertised and
         # exported, and by a pre-query library that exports it.
-        ("open-link", ["-DOPERATIONS=32", "-DWITH_OPEN_LINK"], "ok+open-link", "no-take"),
-        ("open-link-legacy", ["-DLEGACY", "-DWITH_OPEN_LINK"], "ok+open-link", "no-take"),
-        ("open-link-unadvertised", ["-DWITH_OPEN_LINK"], "ok", "no-take"),
+        ("open-link", ["-DOPERATIONS=32", "-DWITH_OPEN_LINK"], "ok", "open-link"),
+        ("open-link-legacy", ["-DLEGACY", "-DWITH_OPEN_LINK"], "ok", "open-link"),
+        ("open-link-unadvertised", ["-DWITH_OPEN_LINK"], "ok", ""),
         ("open-link-missing", ["-DOPERATIONS=32"],
-         "android.abi.missingAdvertised: swift_tui_android_copy_open_link", "no-take"),
+         "android.abi.missingAdvertised: swift_tui_android_copy_open_link", ""),
         # Take clipboard (operation bit 6), by the same rule.
         ("take", ["-DOPERATIONS=64", "-DWITH_TAKE"], "ok", "take"),
-        ("take-minor-0", ["-DABI_MINOR=0", "-DWITH_TAKE"], "ok", "no-take"),
-        ("take-unadvertised", ["-DWITH_TAKE"], "ok", "no-take"),
+        ("take-minor-0", ["-DABI_MINOR=0", "-DWITH_TAKE"], "ok", ""),
+        ("take-unadvertised", ["-DWITH_TAKE"], "ok", ""),
         ("take-legacy", ["-DLEGACY", "-DWITH_TAKE"], "ok", "take"),
         ("take-missing", ["-DOPERATIONS=64"],
-         "android.abi.missingAdvertised: swift_tui_android_take_clipboard_text", "no-take"),
+         "android.abi.missingAdvertised: swift_tui_android_take_clipboard_text", ""),
         ("later-minor-unknown-bit", ["-DABI_MINOR=9", "-DOPERATIONS=4160", "-DWITH_TAKE"], "ok", "take"),
-        # The two operations are independent: each bit resolves its own symbol
-        # and leaves the other unresolved, even when the library exports both.
-        ("open-link-and-take", ["-DOPERATIONS=96", "-DWITH_OPEN_LINK", "-DWITH_TAKE"], "ok+open-link", "take"),
-        ("open-link-bit-only", ["-DOPERATIONS=32", "-DWITH_OPEN_LINK", "-DWITH_TAKE"], "ok+open-link", "no-take"),
-        ("take-bit-only", ["-DOPERATIONS=64", "-DWITH_OPEN_LINK", "-DWITH_TAKE"], "ok", "take"),
-        ("open-link-and-take-legacy", ["-DLEGACY", "-DWITH_OPEN_LINK", "-DWITH_TAKE"], "ok+open-link", "take"),
+        # Text input (operation bit 7), by the same rule.
+        ("text-input", ["-DOPERATIONS=128", "-DWITH_TEXT_INPUT"], "ok", "text-input"),
+        ("text-input-legacy", ["-DLEGACY", "-DWITH_TEXT_INPUT"], "ok", "text-input"),
+        ("text-input-unadvertised", ["-DWITH_TEXT_INPUT"], "ok", ""),
+        ("text-input-missing", ["-DOPERATIONS=128"],
+         "android.abi.missingAdvertised: swift_tui_android_text_input", ""),
+        # The operations are independent: each bit resolves its own symbol and
+        # leaves the others unresolved, even when the library exports them all.
+        ("all-minor-1", ["-DOPERATIONS=224", *every], "ok", "open-link,take,text-input"),
+        ("open-link-bit-only", ["-DOPERATIONS=32", *every], "ok", "open-link"),
+        ("take-bit-only", ["-DOPERATIONS=64", *every], "ok", "take"),
+        ("text-input-bit-only", ["-DOPERATIONS=128", *every], "ok", "text-input"),
+        ("all-minor-1-legacy", ["-DLEGACY", *every], "ok", "open-link,take,text-input"),
     ]
-    for name, defines, expected, take in cases:
+    for name, defines, expected, resolved in cases:
         library = str(output / (name + ".so"))
         run(os.environ.get("CC", "cc"), "-std=c11", *common, "-shared", "-fPIC",
             *defines, str(TEST / "abi_fixture.c"), "-o", library)
-        run(runner, library, expected, take)
+        run(runner, library, expected, resolved or "none")

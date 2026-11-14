@@ -35,6 +35,19 @@ class SwiftTUIHostState internal constructor(
   var lastError by mutableStateOf<String?>(null)
     private set
 
+  /** The invisible editor's buffer while it mirrors the focused text control. */
+  internal var imeBuffer by mutableStateOf(SwiftTUIImeBuffer())
+    private set
+
+  /**
+   * Whether the invisible editor mirrors the runtime's focused text control
+   * and sends input-method edits as full-state records. False keeps the
+   * committed-text byte path: an older Swift host library, a secure field, or
+   * a control the frame does not describe.
+   */
+  internal var imeMirroring by mutableStateOf(false)
+    private set
+
   private var handle by mutableLongStateOf(0L)
   // The thread the native host was created on. Every native call belongs to it.
   private var hostThread: Thread? = null
@@ -48,6 +61,8 @@ class SwiftTUIHostState internal constructor(
     )
   }
   private val accessibilityRequests = SwiftTUIAccessibilityRequests()
+  private val ime = SwiftTUIImeSession()
+  private var supportsTextInput = false
   private var lastResize: HostResize? = null
   private val missingImagePayloadIds = linkedSetOf<String>()
   private val webSurfaceSession = SwiftTUIWebSurfaceSession()
@@ -87,6 +102,10 @@ class SwiftTUIHostState internal constructor(
     accessibilityRequests.reset()
     framePoller.reset()
     frame = null
+    // The operation table is fixed once the library is loaded. An older
+    // library lacks the operation, and input stays on the byte path.
+    supportsTextInput = SwiftTUIJni.supportsTextInput()
+    resetIme()
     val declaration = SwiftTUIWireCapabilities.declarationJson().encodeToByteArray()
     SwiftTUIJni.declareCapabilities(handle, declaration, declaration.size)
     // Before the scene starts, so an empty clipboard write made while it
@@ -102,6 +121,9 @@ class SwiftTUIHostState internal constructor(
   fun stop() {
     accessibilityRequests.reset()
     sceneRunning = false
+    // Nothing can be sent to a stopped scene. Text that was composing is
+    // already in the runtime's text, so stopping commits it as it stands.
+    resetIme()
     val currentHandle = handle
     if (currentHandle != 0L) {
       SwiftTUIJni.stop(currentHandle)
@@ -113,6 +135,7 @@ class SwiftTUIHostState internal constructor(
     sceneRunning = false
     // The runtime that could read the imported documents is going away.
     documents?.store?.endSession()
+    resetIme()
     val currentHandle = handle
     handle = 0L
     frame = null
@@ -172,6 +195,46 @@ class SwiftTUIHostState internal constructor(
     val accepted = bytes != null && SwiftTUIJni.accessibilityAction(currentHandle, bytes, bytes.size) == 1
     if (!accepted) accessibilityRequests.cancel(id)
     return accepted
+  }
+
+  /**
+   * One edit of the mirrored editor by the input method: the whole buffer
+   * after the edit. Sends the full-state record, and Return on the byte
+   * channel when a single-line control was given a line break.
+   */
+  internal fun imeEdit(candidate: SwiftTUIImeBuffer) {
+    for (output in ime.edit(candidate)) {
+      when (output) {
+        is SwiftTUIImeOutput.Bytes -> sendInput(output.bytes)
+        is SwiftTUIImeOutput.Edit -> {
+          val currentHandle = handle
+          val id = accessibilityRequests.allocate()
+          val record = id?.let { SwiftTUIImeSession.encode(it, output.target, output.buffer) }
+          val queued = currentHandle != 0L && record != null &&
+            SwiftTUIJni.textInput(currentHandle, record, record.size) == 1
+          ime.editSent(if (queued) id else null)
+        }
+      }
+    }
+    imeBuffer = ime.buffer
+  }
+
+  private fun resetIme() {
+    ime.reset()
+    imeBuffer = ime.buffer
+    imeMirroring = false
+  }
+
+  /** Follows the runtime's focused text control, or leaves mirroring. */
+  private fun reconcileIme(frame: SwiftTUIFrame) {
+    val editor = if (supportsTextInput) SwiftTUIImeSession.focusedEditor(frame) else null
+    // The raw watermark: an input-method edit has no outstanding entry, so
+    // `accessibilityRequests.accept` would discard its acknowledgement.
+    val acknowledged = frame.accessibilityActionResponse?.requestID
+      ?.let(::normalizeWireUInt64)?.toLongOrNull()
+    ime.observe(editor, acknowledged)
+    imeBuffer = ime.buffer
+    imeMirroring = ime.isMirroring
   }
 
   internal fun reportMissingImagePayload(id: String) {
@@ -332,6 +395,7 @@ class SwiftTUIHostState internal constructor(
           accessibilityRequests.observeEpoch(framePoller.epoch)
           accessibilityRequests.retainTargets(result.value.accessibilityNodes.mapNotNull { it.actionTarget }.toSet())
           frame = result.value.copy(accessibilityActionResponse = accessibilityRequests.accept(result.value.accessibilityActionResponse))
+          reconcileIme(result.value)
         }
         lastError = null
       }

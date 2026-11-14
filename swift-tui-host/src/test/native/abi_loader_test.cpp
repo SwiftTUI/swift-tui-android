@@ -11,32 +11,36 @@ static void* countedResolve(void* library, const char* name) {
 }
 
 int main(int argc, char** argv) {
-  // argv: library, expected load result ("ok+open-link" also expects open link
-  // to resolve), and whether take clipboard resolves.
+  // argv: library, expected load result ("ok" or the start of the error), and
+  // the optional minor 1 operations that must resolve: a comma-separated list
+  // of open-link, take and text-input, or "none". An operation that is not
+  // listed must stay unresolved.
   assert(argc == 4);
-  const bool expectsTake = std::string(argv[3]) == "take";
+  const std::string resolvedOperations = std::string(",") + argv[3] + ",";
+  const auto expects = [&](const char* operation) {
+    return resolvedOperations.find(std::string(",") + operation + ",") != std::string::npos;
+  };
   void* library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
   if (!library) { std::cerr << dlerror() << '\n'; return 1; }
   HostFunctions functions;
   const auto error = functions.load(library, countedResolve);
-  if (std::string(argv[2]).rfind("ok", 0) != 0) {
+  if (std::string(argv[2]) != "ok") {
     assert(error.find(argv[2]) == 0);
     std::cout << error << '\n';
   } else {
     assert(error.empty());
     assert(!functions.capabilities && !functions.resync && !functions.accessibility);
-    // "ok" admits the library without the optional operation; "ok+open-link"
-    // also requires the loader to have resolved it.
-    if (std::string(argv[2]) == "ok+open-link") {
-      assert(functions.copyOpenLink && functions.copyOpenLink(INT64_C(0x100000002), nullptr, 0) == 7);
-    } else {
-      assert(!functions.copyOpenLink);
-    }
-    // Take clipboard follows the same rule as the other optional operations: the
-    // advertised bit decides, not the symbol; a legacy library has no bits, so
-    // there the symbol decides.
-    assert((functions.takeClipboard != nullptr) == expectsTake);
+    // Every optional operation follows one rule: the advertised bit decides,
+    // not the symbol; a legacy library has no bits, so there the symbol decides.
+    assert((functions.copyOpenLink != nullptr) == expects("open-link"));
+    if (functions.copyOpenLink) assert(functions.copyOpenLink(INT64_C(0x100000002), nullptr, 0) == 7);
+    assert((functions.takeClipboard != nullptr) == expects("take"));
     if (functions.takeClipboard) assert(functions.takeClipboard(INT64_C(0x100000002), nullptr, 0) == -1);
+    assert((functions.textInput != nullptr) == expects("text-input"));
+    if (functions.textInput) {
+      const uint8_t record[] = {0x1E, 't', '\n'};
+      assert(functions.textInput(INT64_C(0x100000002), record, 3) == 3);
+    }
     const int resolved = lookups;
     functions.install();
     const auto handle = functions.create();

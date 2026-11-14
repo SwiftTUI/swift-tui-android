@@ -27,4 +27,10 @@ internal object SwiftTUIJni {
   external fun copyOpenLink(handle: Long, outBuffer: ByteArray?, capacity: Int): Int
   external fun accessibilityAction(handle: Long, input: ByteArray, count: Int): Int
   external fun sendInput(handle: Long, input: ByteArray, count: Int)
+
+  /** Whether the loaded Swift host library accepts input-method edit records. */
+  external fun supportsTextInput(): Boolean
+
+  /** 1 = queued, 0 = rejected ingress, -1 = the library has no such operation. */
+  external fun textInput(handle: Long, record: ByteArray, count: Int): Int
 }
