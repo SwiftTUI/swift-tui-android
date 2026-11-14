@@ -15,6 +15,14 @@ val ndkVersionPin = "30.0.16248370"
 // run without it, mirroring the app's `swiftAndroidToolingAvailable` gate.
 val ndkAvailable = androidSdkDir.map { file("$it/ndk/$ndkVersionPin").exists() }
 
+// The ABIs the AAR ships its JNI shim for. Keep this, src/main/jni/Application.mk
+// (APP_ABI) and the Gradle plugin's SwiftTuiAndroidAbi table equal: the plugin
+// stages the Swift host and runtime for exactly these ABIs, and its unit tests
+// fail when the three lists differ. The shim is about 160 KB per ABI (under
+// 60 KB compressed) and the Swift runtime is not in the AAR, so an ABI a
+// consumer does not select costs their APK nothing: their abiFilters drop it.
+val shimAbis = listOf("arm64-v8a", "x86_64")
+
 android {
   namespace = "sh.swifttui.android.host"
 
@@ -33,10 +41,7 @@ android {
     testInstrumentationRunner = "sh.swifttui.android.host.ClipQualificationRunner"
 
     ndk {
-      // arm64-v8a only — keep in sync with src/main/jni/Application.mk. See the
-      // app's defaultConfig.ndk for why arm64 is the only packaged ABI and what
-      // to change to add another (e.g. x86_64 for a CI emulator lane).
-      abiFilters += "arm64-v8a"
+      abiFilters += shimAbis
     }
 
     consumerProguardFiles("consumer-rules.pro")

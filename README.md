@@ -34,11 +34,13 @@ shows the one-source-many-hosts claim rather than describing it.
 > Pre-1.0 (0.22.0 beta). Published via GitHub Pages until the Gradle
 > Plugin Portal / Maven Central graduation.
 
-> Android is a **0.9 preview, arm64-only support tier**: `arm64-v8a`, API 28+,
-> NDK `30.0.16248370`, Swift 6.4.x, and the Swift Android SDK through the
-> published AAR/Gradle-plugin packaging path. The lower-level host can
-> cross-compile x86_64, but x86_64 packaging and IME marked/pre-edit
-> composition are outside the 0.9 claim. The accessibility overlay uses a native virtual
+> Android is a **0.9 preview**: API 28+, NDK `30.0.16248370`, Swift 6.4.x, and
+> the Swift Android SDK through the AAR/Gradle-plugin packaging path.
+> `arm64-v8a` is the default ABI and the one qualified on a device. `x86_64` is
+> an opt-in second ABI (see [Supported ABIs](#supported-abis)): it is packaged
+> and its payload is checked, but it has not yet been run on an x86_64 device
+> or emulator. IME marked/pre-edit composition is outside the 0.9 claim. The
+> accessibility overlay uses a native virtual
 > hierarchy inside Compose. With a runtime advertising semantic actions, it
 > routes accessibility focus, activation, adjustment and text edits through JNI;
 > runtime frames remain authoritative. Runtimes older than 0.15.0 supply
@@ -53,19 +55,20 @@ shows the one-source-many-hosts claim rather than describing it.
 - **Drop-in Compose.** `SwiftTUIHostView` is an ordinary composable. Mount it
   with one `setContent { … }` call, with no `AndroidView` interop glue to write.
 - **The build is handled for you.** The Gradle plugin cross-compiles your Swift
-  host product for `arm64-v8a`, renames the output canonically, and stages it
-  plus the Swift runtime for your APK's `jniLibs`. You declare the source set
-  and the SwiftPM product; the plugin does the toolchain plumbing.
+  host product for each ABI you select (`arm64-v8a` unless you say otherwise),
+  renames the output canonically, and stages it plus the Swift runtime for your
+  APK's `jniLibs`. You declare the source set and the SwiftPM product; the
+  plugin does the toolchain plumbing.
 - **Lean APK.** The host AAR is a Compose view plus a JNI shim and does **not**
   bundle the Swift runtime; the plugin supplies that from your Swift Android
-  SDK, so your APK ships exactly one copy.
+  SDK, so your APK ships exactly one copy per ABI.
 
 ## What this repo publishes
 
 | Artifact | Coordinates | What it is |
 | --- | --- | --- |
-| **Host library (AAR)** | `sh.swifttui:android-host` | A Compose `SwiftTUIHostView` + the JNI shim that bridges to the Swift `SwiftTUIAndroidHost` C ABI. Runtime not bundled. |
-| **Gradle plugin** | `sh.swifttui.android` | Cross-builds your Swift host product to an Android `.so` and copies it + the Swift runtime (from your Swift Android SDK) into your app's `jniLibs`. |
+| **Host library (AAR)** | `sh.swifttui:android-host` | A Compose `SwiftTUIHostView` + the JNI shim that bridges to the Swift `SwiftTUIAndroidHost` C ABI, for each [supported ABI](#supported-abis). Runtime not bundled. |
+| **Gradle plugin** | `sh.swifttui.android` | Cross-builds your Swift host product to an Android `.so` per selected ABI and copies it + the Swift runtime (from your Swift Android SDK) into your app's `jniLibs`. |
 
 It is the Android sibling of
 [`swift-tui-swiftui`](https://github.com/SwiftTUI/swift-tui-swiftui) (native
@@ -151,8 +154,9 @@ android {
     minSdk = 28
     targetSdk = 36
 
-    // arm64-v8a is the 0.9 support tier. Without this the APK advertises ABIs
-    // it has no Swift runtime for, and installs-then-blanks on those devices.
+    // Package exactly the ABIs the plugin stages Swift for (arm64-v8a unless
+    // swiftTuiAndroidHost.abis says otherwise). Without this the APK advertises
+    // ABIs it has no Swift runtime for, and installs-then-blanks on those devices.
     ndk { abiFilters += "arm64-v8a" }
   }
 
@@ -260,7 +264,55 @@ setContent { SwiftTUIHostView(state = rememberSwiftTUIHostState()) }
 
 During the build, the plugin cross-compiles `MyAppHost` for `arm64-v8a`, renames
 the result to `libswift_tui_app_host.so`, and stages it plus the Swift runtime
-into `build/generated/swiftJniLibs` for the source set declared above.
+into `build/generated/swiftJniLibs/arm64-v8a` for the source set declared above.
+
+### Supported ABIs
+
+| Android ABI | Swift SDK triple | Swift runtime (in the Swift Android SDK) | NDK `libc++_shared.so` |
+| --- | --- | --- | --- |
+| `arm64-v8a` (default) | `aarch64-unknown-linux-android28` | `swift-resources/usr/lib/swift-aarch64/android` | `sysroot/usr/lib/aarch64-linux-android` |
+| `x86_64` | `x86_64-unknown-linux-android28` | `swift-resources/usr/lib/swift-x86_64/android` | `sysroot/usr/lib/x86_64-linux-android` |
+
+The AAR carries its JNI shim for both. The plugin builds and stages Swift only
+for the ABIs in `swiftTuiAndroidHost.abis`, which defaults to `arm64-v8a`, so an
+app that selects nothing builds exactly what it did before. To add `x86_64`
+(an emulator on an Intel or AMD host, or a CI runner), name both ABIs in both
+places:
+
+```kotlin
+android {
+  defaultConfig {
+    ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+  }
+}
+
+swiftTuiAndroidHost {
+  productName = "MyAppHost"
+  abis = setOf("arm64-v8a", "x86_64")
+}
+```
+
+`abis` is the complete list, not an addition to the default. Each ABI is a
+separate Swift cross-build (`buildSwiftAndroidArm64V8a`,
+`buildSwiftAndroidX86_64`) staged into its own `jniLibs/<abi>` directory, and one
+more copy of the Swift runtime in the APK: the counter demo's debug APK grows
+from about 77 MB to about 132 MB with both. `arm64-v8a` builds in SwiftPM's
+usual `SwiftPackage/.build`; `x86_64` builds in its own scratch directory inside
+it, `.build/android-x86_64`, because SwiftPM cannot build two triples
+incrementally in one.
+
+The build fails, rather than producing an APK that installs and shows a blank
+view, when:
+
+- `abis` is empty or names an ABI outside the table (`armeabi-v7a`, `x86`,
+  `riscv64`);
+- the installed Swift Android SDK or NDK has no runtime for a selected ABI;
+- `defaultConfig.ndk.abiFilters` names an ABI that `abis` does not. The reverse
+  is allowed: a flavor or build type may package fewer ABIs than are staged.
+
+> `abis` and the `x86_64` shim are in this source tree. The published `0.22.0`
+> plugin and AAR predate them: they are `arm64-v8a` only and have no `abis`
+> property.
 
 ### Links
 
@@ -292,8 +344,9 @@ swiftTuiAndroidHost {
 
 ## Requirements
 
-- Install the Android SDK Platform **37.1** and NDK `30.0.16248370` for the JNI
-  shim. Use `minSdk 28` and `compileSdk 37.1` — both this AAR and Compose
+- Install the Android SDK Platform **37.1** and NDK `30.0.16248370`: it strips
+  the packaged libraries and supplies each ABI's `libc++_shared.so`. Use
+  `minSdk 28` and `compileSdk 37.1` — both this AAR and Compose
   `1.12.0` declare `minCompileSdk 37`, so a lower `compileSdk` fails
   `checkAarMetadata`.
 - Use **AGP 9.1.0–9.2.1**. Compose `1.12.0` requires 9.1.0 or newer, and Android

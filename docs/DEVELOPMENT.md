@@ -2,8 +2,9 @@
 
 ## Toolchains
 
-The Android SDK plus NDK `30.0.16248370` (`minSdk 28`) build the JNI shim;
-Swift 6.4.x with the Swift Android SDK cross-compiles the host `.so`. The
+The Android SDK plus NDK `30.0.16248370` (`minSdk 28`) build the JNI shim for
+`arm64-v8a` and `x86_64`; Swift 6.4.x with the Swift Android SDK cross-compiles
+the host `.so` for each ABI a consumer selects. The
 repository does not vendor these toolchains. Run the JVM unit tests on JDK 21,
 as CI does: the IME tests rely on `java.text.BreakIterator` returning extended
 grapheme clusters, which JDKs before 20 do not. On a device, the platform ICU
@@ -13,10 +14,17 @@ supplies those boundaries.
 
 ```bash
 ./gradlew :swift-tui-host:testDebugUnitTest   # JVM unit tests (NDK-free)
+./gradlew :android-plugin:check               # plugin tests + publication identity
 ./gradlew :swift-tui-host:assembleRelease     # the AAR
 ./gradlew publishToMavenLocal                 # AAR + plugin into ~/.m2
 Scripts/native_gate.sh                    # the repo gate CI runs
 ```
+
+`:android-plugin:check` runs the plugin in real Gradle builds (TestKit) against
+a fake Swift toolchain: a `swiftly` script, an SDK bundle and an NDK whose
+"libraries" are text files naming their triple. It covers ABI selection and
+rejection, per-ABI staging, incremental behaviour, the skip when tooling is
+absent, and configuration-cache reuse, without Swift or the NDK.
 
 Those targets cover the Kotlin half only: this repository never cross-compiles
 Swift, so a green `native_gate.sh` says nothing about the Swift toolchain.
@@ -33,6 +41,49 @@ cd swift-tui-counter-demo/AndroidExample
 
 That example is the canonical end-to-end check for a change to the AAR, the
 Gradle plugin, or the Swift `SwiftTUIAndroidHost` product.
+
+## ABIs
+
+Three lists name the supported ABIs and must stay equal: `shimAbis` in
+`swift-tui-host/build.gradle.kts`, `APP_ABI` in
+`swift-tui-host/src/main/jni/Application.mk`, and the `SwiftTuiAndroidAbi` table
+in the plugin, which maps each ABI to its Swift SDK triple, SwiftPM scratch and
+output directories, Swift runtime directory and NDK `libc++_shared.so`. A plugin
+unit test fails when they differ. Adding an ABI means adding it to all three and
+qualifying it on a device.
+
+Each ABI other than the default builds with its own `--scratch-path`
+(`.build/android-<abi>` in the package). Two triples in one SwiftPM scratch
+directory share a build manifest but not a build description: after the first
+build of the second triple, every build of the first fails with `No target
+named '<product>-<triple>-debug.dylib' in build description`. The plugin's
+tests cannot see this, because their `swiftly` is a script. After changing how
+the plugin invokes SwiftPM, run a real two-ABI consumer through the sequence
+that exposes it: build, edit a Swift source, build again, twice.
+
+`Scripts/verify_native_payload.py` checks what was actually packaged. It reads
+the archive and the ELF headers itself, so it needs no NDK; `--readelf` adds a
+cross-check against the NDK's `llvm-readelf` (under `linux-x86_64` on Linux):
+
+```bash
+./gradlew :swift-tui-host:assembleRelease
+python3 Scripts/verify_native_payload.py --abi arm64-v8a --abi x86_64 \
+  swift-tui-host/build/outputs/aar/swift-tui-host-release.aar
+
+python3 Scripts/verify_native_payload.py --abi arm64-v8a --abi x86_64 \
+  --readelf "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf" \
+  path/to/consumer/app/build/outputs/apk/debug/app-debug.apk
+```
+
+For an AAR it requires the JNI shim for every named ABI and nothing else (no
+Swift runtime, no `libc++`). For an APK it requires the shim, the Swift host,
+the Swift runtime and `libc++_shared.so` per ABI, the same library set in every
+ABI, every `DT_NEEDED` resolved inside the ABI directory or by the platform, the
+right ELF machine for each directory, and no ABI directory that was not named.
+
+`arm64-v8a` has been built, installed and driven on an emulator. `x86_64` has
+been built and its payload verified, but not run: an x86_64 system image needs
+an x86_64 host with hardware virtualization.
 
 The Kotlin host decodes image opacity from the shared web-surface record and
 applies it through the Compose canvas paint. Bitmap cache keys remain based on

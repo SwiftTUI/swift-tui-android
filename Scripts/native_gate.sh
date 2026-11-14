@@ -2,9 +2,11 @@
 set -euo pipefail
 
 # swift-tui-android native gate: the host library's JVM unit tests + plugin
-# validation, plus a portable C/C++ caller for the JNI ABI loader. NDK-free and
-# no Swift toolchain; needs a JDK, Android SDK (compileSdk), Python 3 and host
-# C/C++ compilers. Installed native-library qualification runs separately.
+# validation and tests (ABI selection against a fake Swift toolchain), plus a
+# portable C/C++ caller for the JNI ABI loader and offline rehearsals of the
+# Maven merge and the native payload check. NDK-free and no Swift toolchain;
+# needs a JDK, Android SDK (compileSdk), Python 3 and host C/C++ compilers.
+# Installed native-library qualification runs separately.
 
 script_source="${BASH_SOURCE[0]}"
 if command -v realpath >/dev/null 2>&1; then
@@ -44,6 +46,7 @@ fi
 
 python3 Scripts/test_abi_loader.py
 python3 Scripts/test_maven_release.py
+python3 Scripts/test_native_payload.py
 
 exec ./gradlew --no-daemon --console=plain \
   :swift-tui-host:testDebugUnitTest \
