@@ -98,6 +98,32 @@ The Kotlin host decodes image opacity from the shared web-surface record and
 applies it through the Compose canvas paint. Bitmap cache keys remain based on
 image content identity; alpha-only frames replay the cached bitmap.
 
+## Accessibility bounds regression
+
+The device-backed `accessibility-bounds` qualification presents one frame once,
+warms Android's accessibility-service node cache, then animates an ancestor and
+moves, scrolls, lays out and reattaches the native overlay. It reads each new
+screen rectangle through `UiAutomation` and a retained host node, without
+refreshing nodes or clearing the cache. The ancestor animation fails against
+the earlier host because `ViewPropertyAnimator` does not send the subtree
+notification that direct translation setters send.
+
+```bash
+./gradlew :swift-tui-host:assembleDebugAndroidTest
+adb install -r swift-tui-host/build/outputs/apk/androidTest/debug/swift-tui-host-debug-androidTest.apk
+adb shell am instrument -w -e qualification accessibility-bounds \
+  sh.swifttui.android.host.test/sh.swifttui.android.host.ClipQualificationRunner
+```
+
+The stream must contain `ACCESSIBILITY-BOUNDS PASS`; a stack trace is a failure.
+The JVM native gate cannot exercise Android's accessibility cache. This
+qualification needs a connected device or emulator and has been run on API 36.
+
+The overlay observes screen-origin changes before drawing and sends one host
+subtree invalidation when the integer screen position changes and virtual
+nodes exist. It removes the observer on detach and restores it on reattach.
+Stationary draws do not invalidate the subtree or change accessibility focus.
+
 ## Document import tests
 
 `SwiftTUIHostState.importDocument` is tested in three layers. The JVM tests

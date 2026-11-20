@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -42,8 +43,38 @@ internal class SwiftTUIAccessibilityView(context: Context) : View(context) {
   private var lastResponseID: String? = null
   private var style: SwiftTUIAndroidStyle? = null
   private var send: (SwiftTUIAccessibilityActionRequest) -> Boolean = { false }
+  private val screenLocation = IntArray(2)
+  private var screenX = 0
+  private var screenY = 0
+  private val positionListener = ViewTreeObserver.OnPreDrawListener {
+    getLocationOnScreen(screenLocation)
+    if (screenLocation[0] != screenX || screenLocation[1] != screenY) {
+      screenX = screenLocation[0]
+      screenY = screenLocation[1]
+      // Bounds in the service's virtual-node cache include our screen origin.
+      // Ancestor scrolling/translation and IME movement need not present a
+      // runtime frame or lay out this view, so observe the whole tree's draws.
+      if (nodes.isNotEmpty()) {
+        event(AccessibilityNodeProvider.HOST_VIEW_ID, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+      }
+    }
+    true
+  }
 
   init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    getLocationOnScreen(screenLocation)
+    screenX = screenLocation[0]
+    screenY = screenLocation[1]
+    viewTreeObserver.addOnPreDrawListener(positionListener)
+  }
+
+  override fun onDetachedFromWindow() {
+    viewTreeObserver.removeOnPreDrawListener(positionListener)
+    super.onDetachedFromWindow()
+  }
 
   fun present(frame: SwiftTUIFrame?, style: SwiftTUIAndroidStyle,
     send: (SwiftTUIAccessibilityActionRequest) -> Boolean) {

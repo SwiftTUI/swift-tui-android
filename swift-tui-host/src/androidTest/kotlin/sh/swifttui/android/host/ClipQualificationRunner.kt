@@ -9,18 +9,19 @@ import android.graphics.RectF
 import android.os.Bundle
 import android.os.SystemClock
 
-/** Manual, device-backed qualification of the real renderer's cell paint loop. */
+/** Device-backed qualifications of rendering and native accessibility. */
 class ClipQualificationRunner : Instrumentation() {
-  private var accessibility = false
+  private var qualification: String? = null
   override fun onCreate(arguments: Bundle?) {
-    accessibility = arguments?.getString("qualification") == "accessibility"
+    qualification = arguments?.getString("qualification")
     super.onCreate(arguments)
     start()
   }
 
   override fun onStart() {
     try {
-      val result = if (accessibility) {
+      val result = if (qualification == "accessibility-bounds") qualifyAccessibilityBounds()
+      else if (qualification == "accessibility") {
         var result = ""
         runOnMainSync { result = qualifyAccessibility(targetContext) }
         result
