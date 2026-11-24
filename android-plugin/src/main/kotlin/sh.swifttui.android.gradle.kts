@@ -45,8 +45,8 @@ hostConfig.swiftTuiCheckout.convention(
   layout.dir(providers.environmentVariable("SWIFTTUI_LOCAL_CHECKOUT").map { File(it) })
 )
 
-val swiftToolchainVersion = "+6.4.0"
-val swiftSdkArtifactName = "swift-6.4.0-RELEASE_android"
+val swiftToolchainVersion = "+6.4.3"
+val swiftSdkArtifactName = "swift-6.4.3-RELEASE_android"
 val swiftTuiDependencyUrl = "https://github.com/SwiftTUI/swift-tui.git"
 // The jniLibs root the app adds to its source set. Each selected ABI is staged
 // into its own `<abi>/` subdirectory, the layout AGP expects.
