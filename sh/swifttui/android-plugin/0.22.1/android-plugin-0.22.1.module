@@ -1,0 +1,64 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "sh.swifttui",
+    "module": "android-plugin",
+    "version": "0.22.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.22.1.jar",
+          "url": "android-plugin-0.22.1.jar",
+          "size": 64222,
+          "sha512": "0fffffdb753d64db4edae64cb768fe14eda2da922b309e23a54c91c659e8a33a9c1474182e9f869d89c884dac6755924b97e0c9edc7659a5e6935ba619c1484a",
+          "sha256": "67df9b29a77dcc050c2719852b6546685c3cf174cc92f52be4570aeaadd60613",
+          "sha1": "531ab415f9fc415c043d3d86c69caa537e3eb27d",
+          "md5": "5de9d5bb2ad27518fe035ab548410b53"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "android-plugin-0.22.1.jar",
+          "url": "android-plugin-0.22.1.jar",
+          "size": 64222,
+          "sha512": "0fffffdb753d64db4edae64cb768fe14eda2da922b309e23a54c91c659e8a33a9c1474182e9f869d89c884dac6755924b97e0c9edc7659a5e6935ba619c1484a",
+          "sha256": "67df9b29a77dcc050c2719852b6546685c3cf174cc92f52be4570aeaadd60613",
+          "sha1": "531ab415f9fc415c043d3d86c69caa537e3eb27d",
+          "md5": "5de9d5bb2ad27518fe035ab548410b53"
+        }
+      ]
+    }
+  ]
+}
