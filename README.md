@@ -314,7 +314,7 @@ view, when:
 - `defaultConfig.ndk.abiFilters` names an ABI that `abis` does not. The reverse
   is allowed: a flavor or build type may package fewer ABIs than are staged.
 
-> `abis` and the `x86_64` shim are in this source tree. The published `0.22.0`
+> `abis` and the `x86_64` shim are in this source tree. The published `0.22.1`
 > plugin and AAR predate them: they are `arm64-v8a` only and have no `abis`
 > property.
 
